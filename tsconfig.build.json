@@ -1,0 +1,12 @@
+{
+  // Extends the base config but only compiles production code
+  // and actually writes JavaScript to ./build.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./build",
+    "rootDir": "./src",
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"]
+}

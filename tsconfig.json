@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    // Target modern Node (>= 20) so we can use native ES2022 features.
+    "target": "ES2022",
+    "lib": ["ES2023"],
+
+    // NodeNext matches how Node resolves ESM packages, including the
+    // "exports" map used by @modelcontextprotocol/server/stdio.
+    // Consequence: relative imports in our own code must end with ".js".
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    // Strictness: catch as many mistakes as possible at compile time.
+    "strict": true,
+    // array[i] is typed "T | undefined", which forces us to handle empty cases.
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+
+    // This config is only used for checking; the build config emits files.
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}

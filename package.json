@@ -1,0 +1,64 @@
+{
+  "name": "repo-pulse-mcp",
+  "version": "0.1.0",
+  "description": "A read-only MCP server that gives AI assistants insight into a local git repository.",
+  "type": "module",
+  "main": "./build/index.js",
+  "bin": {
+    "repo-pulse-mcp": "./build/index.js"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/index.ts",
+    "start": "node build/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "inspect": "npx @modelcontextprotocol/inspector node build/index.js -e REPO_PULSE_REPOS=$PWD",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "git",
+    "typescript",
+    "ai-tools"
+  ],
+  "author": "hasanyelaldi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hasanyelaldi/repo-pulse-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hasanyelaldi/repo-pulse-mcp/issues"
+  },
+  "homepage": "https://github.com/hasanyelaldi/repo-pulse-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.4"
+  }
+}
