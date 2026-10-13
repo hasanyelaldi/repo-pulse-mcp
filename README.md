@@ -14,6 +14,11 @@ assistant insight into local git repositories, so it can answer questions like:
 
 It runs locally over stdio, needs nothing but Node.js and git, and never modifies a repository.
 
+It is platform-agnostic: it works with any local git repository, whether it was cloned from GitHub,
+GitLab, Bitbucket or anywhere else, or has no remote at all. It only reads local git history and
+never contacts a hosting service, so platform data such as pull requests, issues or CI status is out
+of scope.
+
 <!-- SCREENSHOT / GIF: Claude Desktop answering "What changed since the last release?"
      using release_notes_draft. Save as docs/demo.gif and uncomment the line below. -->
 <!-- ![Demo](docs/demo.gif) -->
