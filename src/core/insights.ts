@@ -11,6 +11,7 @@ import {
 } from '../git/parsers.js';
 import type { GitRunner } from '../git/runner.js';
 import { validateAuthor, validateRef, validateRepoPath } from '../git/validation.js';
+import { compileExcludes } from './glob.js';
 import { groupCommits, renderMarkdown, type ReleaseNoteSection } from './release-notes.js';
 
 // Hard caps that apply regardless of what the client asks for. They keep a
@@ -91,7 +92,11 @@ export class RepoInsights {
     };
   }
 
-  async fileHotspots(repoPath: string, opts: { days: number; limit: number; path?: string }) {
+  async fileHotspots(
+    repoPath: string,
+    opts: { days: number; limit: number; path?: string; exclude?: string[] },
+  ) {
+    const isExcluded = compileExcludes(opts.exclude);
     const out = await this.runGit(repoPath, [
       'log',
       `--format=${COMMIT_FORMAT}`,
@@ -120,6 +125,7 @@ export class RepoInsights {
     // git log is newest-first, so the first time we see a file is its latest change.
     for (const commit of commits) {
       for (const file of commit.files) {
+        if (isExcluded(file.path)) continue;
         const entry = stats.get(file.path) ?? {
           changes: 0,
           additions: 0,

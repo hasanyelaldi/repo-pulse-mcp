@@ -97,6 +97,22 @@ describe('fileHotspots', () => {
     expect(result.hotspots).toHaveLength(3);
     expect(result.filesChanged).toBe(5);
   });
+
+  it('leaves out files matching exclude patterns', async () => {
+    const result = await insights.fileHotspots(repo.path, {
+      days: 30,
+      limit: 10,
+      exclude: ['*.md'],
+    });
+    expect(result.hotspots.map((h) => h.path)).not.toContain('README.md');
+    expect(result.filesChanged).toBe(4);
+  });
+
+  it('rejects malformed exclude patterns', async () => {
+    await expect(
+      insights.fileHotspots(repo.path, { days: 30, limit: 3, exclude: [''] }),
+    ).rejects.toThrow(InputError);
+  });
 });
 
 describe('releaseNotesDraft', () => {

@@ -212,6 +212,14 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
         repo: repoField,
         days: daysField(90),
         path: z.string().max(500).optional().describe('Restrict to this file or directory.'),
+        exclude: z
+          .array(z.string().min(1).max(200))
+          .max(20)
+          .optional()
+          .describe(
+            'Glob patterns for files to leave out, e.g. ["*.lock", "dist/", "docs/**/*.md"]. ' +
+              'A pattern without "/" matches at any depth; a trailing "/" excludes a directory.',
+          ),
         limit: limitField(10, 100),
       }),
       outputSchema: fileHotspotsOutput,

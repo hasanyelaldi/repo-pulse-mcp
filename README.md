@@ -146,11 +146,12 @@ Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHas
 
 ### `file_hotspots`
 
-| Input   | Type    | Default | Notes                 |
-| ------- | ------- | ------- | --------------------- |
-| `days`  | integer | 90      | 1–3650                |
-| `path`  | string  | –       | Restrict to a subtree |
-| `limit` | integer | 10      | 1–100                 |
+| Input     | Type     | Default | Notes                                                                                            |
+| --------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `days`    | integer  | 90      | 1–3650                                                                                           |
+| `path`    | string   | –       | Restrict to a subtree                                                                            |
+| `exclude` | string[] | –       | Up to 20 globs to skip, e.g. `["*.lock", "dist/"]`. No `/` = any depth, trailing `/` = directory |
+| `limit`   | integer  | 10      | 1–100                                                                                            |
 
 Output: `{ repo, windowDays, commitsScanned, scanTruncated, filesChanged, hotspots: [{ path, changes, additions, deletions, authors, lastChanged }] }`
 
