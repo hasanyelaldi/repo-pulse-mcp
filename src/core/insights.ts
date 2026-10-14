@@ -216,7 +216,7 @@ export class RepoInsights {
 
   async staleBranches(
     repoPath: string,
-    opts: { days: number; limit: number; includeRemote: boolean },
+    opts: { days: number; limit: number; includeRemote: boolean; mergedOnly?: boolean },
   ) {
     const refs = opts.includeRemote ? ['refs/heads', 'refs/remotes'] : ['refs/heads'];
     const [allOut, mergedOut] = await Promise.all([
@@ -241,6 +241,7 @@ export class RepoInsights {
         mergedIntoHead: merged.has(b.name),
       }))
       .filter((b) => b.daysSinceLastCommit >= opts.days)
+      .filter((b) => !opts.mergedOnly || b.mergedIntoHead)
       .sort(
         (a, b) => b.daysSinceLastCommit - a.daysSinceLastCommit || a.name.localeCompare(b.name),
       );

@@ -271,6 +271,10 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .boolean()
           .default(false)
           .describe('Also include remote-tracking branches.'),
+        mergedOnly: z
+          .boolean()
+          .default(false)
+          .describe('Only list branches already merged into HEAD, i.e. safe cleanup candidates.'),
         limit: limitField(50, 200),
       }),
       outputSchema: staleBranchesOutput,
