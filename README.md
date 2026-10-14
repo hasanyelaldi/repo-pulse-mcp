@@ -182,11 +182,12 @@ Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, la
 
 ### `contributor_summary`
 
-| Input           | Type    | Default | Notes            |
-| --------------- | ------- | ------- | ---------------- |
-| `days`          | integer | 30      | 1–3650           |
-| `includeMerges` | boolean | false   | Count merges too |
-| `limit`         | integer | 20      | 1–100            |
+| Input           | Type    | Default | Notes                 |
+| --------------- | ------- | ------- | --------------------- |
+| `days`          | integer | 30      | 1–3650                |
+| `includeMerges` | boolean | false   | Count merges too      |
+| `path`          | string  | –       | Restrict to a subtree |
+| `limit`         | integer | 20      | 1–100                 |
 
 Output: `{ repo, windowDays, totalCommits, scanTruncated, contributorCount, contributors: [{ author, commits, firstCommit, lastCommit }] }`
 

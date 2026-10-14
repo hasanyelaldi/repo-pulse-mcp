@@ -249,7 +249,7 @@ export class RepoInsights {
 
   async contributorSummary(
     repoPath: string,
-    opts: { days: number; limit: number; includeMerges: boolean },
+    opts: { days: number; limit: number; includeMerges: boolean; path?: string },
   ) {
     const out = await this.runGit(repoPath, [
       'log',
@@ -258,6 +258,7 @@ export class RepoInsights {
       ...(opts.includeMerges ? [] : ['--no-merges']),
       sinceArg(opts.days, this.now()),
       'HEAD',
+      ...pathspec(opts.path),
     ]);
     const commits = parseCommits(out);
     const byAuthor = new Map<

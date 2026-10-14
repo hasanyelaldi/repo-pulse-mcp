@@ -278,11 +278,13 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     'contributor_summary',
     {
       title: 'Contributor summary',
-      description: 'Count commits per author on HEAD in the last N days, most active first.',
+      description:
+        'Count commits per author on HEAD in the last N days, most active first. Optionally restricted to a path.',
       inputSchema: z.object({
         repo: repoField,
         days: daysField(30),
         includeMerges: z.boolean().default(false).describe('Count merge commits too.'),
+        path: z.string().max(500).optional().describe('Restrict to this file or directory.'),
         limit: limitField(20, 100),
       }),
       outputSchema: contributorSummaryOutput,

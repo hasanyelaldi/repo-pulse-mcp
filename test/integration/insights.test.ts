@@ -192,6 +192,31 @@ describe('contributorSummary', () => {
       new Date(alice?.lastCommit ?? '').getTime(),
     );
   });
+
+  it('can be restricted to a path', async () => {
+    const result = await insights.contributorSummary(repo.path, {
+      days: 30,
+      limit: 20,
+      includeMerges: false,
+      path: 'src/app.ts',
+    });
+    expect(result.totalCommits).toBe(3);
+    expect(result.contributors.map((c) => [c.author, c.commits])).toEqual([
+      ['Alice Example', 2],
+      ['Bob Example', 1],
+    ]);
+  });
+
+  it('rejects unsafe paths', async () => {
+    await expect(
+      insights.contributorSummary(repo.path, {
+        days: 30,
+        limit: 20,
+        includeMerges: false,
+        path: '../etc',
+      }),
+    ).rejects.toThrow();
+  });
 });
 
 describe('overview', () => {
