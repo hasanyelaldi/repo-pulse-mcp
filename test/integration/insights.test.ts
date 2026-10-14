@@ -167,6 +167,20 @@ describe('releaseNotesDraft', () => {
 });
 
 describe('staleBranches', () => {
+  it('can be limited to branches already merged into HEAD', async () => {
+    const result = await insights.staleBranches(repo.path, {
+      days: 14,
+      limit: 50,
+      includeRemote: false,
+      mergedOnly: true,
+    });
+    expect(result.totalBranches).toBe(3);
+    expect(result.staleCount).toBe(1);
+    expect(result.branches).toEqual([
+      expect.objectContaining({ name: 'merged-branch', mergedIntoHead: true }),
+    ]);
+  });
+
   it('lists old branches with merge status', async () => {
     const result = await insights.staleBranches(repo.path, {
       days: 14,

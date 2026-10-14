@@ -173,11 +173,12 @@ footer; breaking commits also appear in their type section. Merge commits are sk
 
 ### `stale_branches`
 
-| Input           | Type    | Default | Notes                              |
-| --------------- | ------- | ------- | ---------------------------------- |
-| `days`          | integer | 30      | Minimum age of the latest commit   |
-| `includeRemote` | boolean | false   | Also list remote-tracking branches |
-| `limit`         | integer | 50      | 1–200                              |
+| Input           | Type    | Default | Notes                                    |
+| --------------- | ------- | ------- | ---------------------------------------- |
+| `days`          | integer | 30      | Minimum age of the latest commit         |
+| `includeRemote` | boolean | false   | Also list remote-tracking branches       |
+| `mergedOnly`    | boolean | false   | Only branches already merged into `HEAD` |
+| `limit`         | integer | 50      | 1–200                                    |
 
 Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, lastCommitDate, lastAuthor, daysSinceLastCommit, mergedIntoHead }] }`
 
