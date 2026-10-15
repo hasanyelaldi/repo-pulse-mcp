@@ -7,6 +7,7 @@ import {
   parseCommits,
   parseCommitsWithBody,
   parseCommitsWithNumstat,
+  renamedPath,
   type Commit,
 } from '../git/parsers.js';
 import type { GitRunner } from '../git/runner.js';
@@ -129,6 +130,43 @@ export class RepoInsights {
       windowDays: opts.days ?? null,
       totalMatches,
       truncated: totalMatches > commits.length,
+      commits,
+    };
+  }
+
+  /** History of a single file on HEAD, newest first, following it across renames. */
+  async fileHistory(repoPath: string, opts: { path: string; limit: number }) {
+    const path = validateRepoPath(opts.path);
+    const out = await this.runGit(repoPath, [
+      'log',
+      `--format=${COMMIT_FORMAT}`,
+      '--numstat',
+      '--follow',
+      '--no-merges',
+      '--no-ext-diff',
+      '--no-textconv',
+      `--max-count=${opts.limit + 1}`,
+      'HEAD',
+      '--',
+      path,
+    ]);
+    const all = parseCommitsWithNumstat(out);
+    const commits = all.slice(0, opts.limit).map(({ files, ...commit }) => {
+      const file = files[0];
+      return {
+        ...commit,
+        path: file ? renamedPath(file.path) : null,
+        additions: file?.additions ?? null,
+        deletions: file?.deletions ?? null,
+      };
+    });
+    const paths = new Set(commits.map((c) => c.path).filter((p) => p !== null));
+
+    return {
+      path,
+      commitCount: commits.length,
+      truncated: all.length > opts.limit,
+      renamed: paths.size > 1,
       commits,
     };
   }

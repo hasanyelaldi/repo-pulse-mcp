@@ -146,3 +146,53 @@ export async function createPlainDir(): Promise<TempRepo> {
   const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-plain-')));
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
+
+/**
+ * Creates a small history in which a file is renamed (days before {@link NOW}):
+ *
+ *   9  chore: add util                     alice   (src/util.ts)
+ *   6  feat: extend util                   bob     (src/util.ts)
+ *   4  refactor: rename util to helpers    alice   (src/util.ts -> lib/helpers.ts)
+ *   2  fix: helpers edge case              carol   (lib/helpers.ts)
+ *   1  docs: add notes                     bob     (NOTES.md only)
+ */
+export async function createRenameRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-rename-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  const util = 'export function a() {\n  return 1;\n}\n\nexport function b() {\n  return 2;\n}\n';
+  await commit(path, {
+    daysAgo: 9,
+    by: 'alice',
+    subject: 'chore: add util',
+    files: { 'src/util.ts': util },
+  });
+  await commit(path, {
+    daysAgo: 6,
+    by: 'bob',
+    subject: 'feat: extend util',
+    files: { 'src/util.ts': `${util}\nexport function c() {\n  return 3;\n}\n` },
+  });
+  await mkdir(join(path, 'lib'));
+  git(path, ['mv', 'src/util.ts', 'lib/helpers.ts']);
+  await commit(path, {
+    daysAgo: 4,
+    by: 'alice',
+    subject: 'refactor: rename util to helpers',
+    files: {},
+  });
+  await commit(path, {
+    daysAgo: 2,
+    by: 'carol',
+    subject: 'fix: helpers edge case',
+    files: { 'lib/helpers.ts': `${util}\nexport function c() {\n  return 4;\n}\n` },
+  });
+  await commit(path, {
+    daysAgo: 1,
+    by: 'bob',
+    subject: 'docs: add notes',
+    files: { 'NOTES.md': 'Notes.\n' },
+  });
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}

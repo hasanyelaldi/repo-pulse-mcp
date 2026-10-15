@@ -134,3 +134,18 @@ export function parseBranches(stdout: string): BranchRef[] {
   }
   return branches;
 }
+
+/**
+ * Resolves a numstat path that records a rename to the new path:
+ * "src/{old.ts => new.ts}" becomes "src/new.ts", "old.ts => new.ts" becomes "new.ts".
+ * Paths without a rename are returned unchanged.
+ */
+export function renamedPath(path: string): string {
+  const braced = /\{([^{}]*) => ([^{}]*)\}/.exec(path);
+  if (braced) {
+    const resolved = path.replace(braced[0], braced[2] ?? '');
+    return resolved.replaceAll('//', '/').replace(/^\//, '');
+  }
+  const arrow = path.indexOf(' => ');
+  return arrow === -1 ? path : path.slice(arrow + ' => '.length);
+}

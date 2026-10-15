@@ -3,7 +3,13 @@ import { resolveRepositories } from '../../src/config.js';
 import { RepoInsights } from '../../src/core/insights.js';
 import { GitError, InputError } from '../../src/errors.js';
 import { runGit } from '../../src/git/runner.js';
-import { createFixtureRepo, createPlainDir, NOW, type TempRepo } from './fixture.js';
+import {
+  createFixtureRepo,
+  createPlainDir,
+  createRenameRepo,
+  NOW,
+  type TempRepo,
+} from './fixture.js';
 
 let repo: TempRepo;
 let insights: RepoInsights;
@@ -254,6 +260,52 @@ describe('commitSearch', () => {
     await expect(
       insights.commitSearch(repo.path, { query: 'x', limit: 5, path: '../etc' }),
     ).rejects.toThrow();
+  });
+});
+
+describe('fileHistory', () => {
+  let renameRepo: TempRepo;
+
+  beforeAll(async () => {
+    renameRepo = await createRenameRepo();
+  });
+
+  afterAll(async () => {
+    await renameRepo?.cleanup();
+  });
+
+  it('follows a file across renames, with per-commit stats', async () => {
+    const result = await insights.fileHistory(renameRepo.path, {
+      path: 'lib/helpers.ts',
+      limit: 20,
+    });
+    expect(result.path).toBe('lib/helpers.ts');
+    expect(result.renamed).toBe(true);
+    expect(result.truncated).toBe(false);
+    expect(result.commits.map((c) => [c.subject, c.path, c.additions, c.deletions])).toEqual([
+      ['fix: helpers edge case', 'lib/helpers.ts', 1, 1],
+      ['refactor: rename util to helpers', 'lib/helpers.ts', 0, 0],
+      ['feat: extend util', 'src/util.ts', 4, 0],
+      ['chore: add util', 'src/util.ts', 7, 0],
+    ]);
+  });
+
+  it('reports truncation when the limit is hit', async () => {
+    const result = await insights.fileHistory(renameRepo.path, {
+      path: 'lib/helpers.ts',
+      limit: 2,
+    });
+    expect(result.commitCount).toBe(2);
+    expect(result.truncated).toBe(true);
+    expect(result.renamed).toBe(false);
+  });
+
+  it('returns an empty history for unknown files and rejects unsafe paths', async () => {
+    const result = await insights.fileHistory(repo.path, { path: 'nope.ts', limit: 5 });
+    expect(result.commits).toEqual([]);
+    await expect(insights.fileHistory(repo.path, { path: '../etc', limit: 5 })).rejects.toThrow(
+      InputError,
+    );
   });
 });
 
