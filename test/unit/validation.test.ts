@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { InputError } from '../../src/errors.js';
-import { validateAuthor, validateRef, validateRepoPath } from '../../src/git/validation.js';
+import {
+  validateAuthor,
+  validateRef,
+  validateRepoPath,
+  validateSearchQuery,
+} from '../../src/git/validation.js';
 
 describe('validateRef', () => {
   it.each([
@@ -57,5 +62,15 @@ describe('validateAuthor', () => {
 
   it.each(['', '   ', 'a\nb', 'x'.repeat(101)])('rejects %j', (author) => {
     expect(() => validateAuthor(author)).toThrow(InputError);
+  });
+});
+
+describe('validateSearchQuery', () => {
+  it('trims and accepts normal text', () => {
+    expect(validateSearchQuery('  PROJ-123 ')).toBe('PROJ-123');
+  });
+
+  it.each(['', '   ', 'a\nb', 'x'.repeat(201)])('rejects %j', (query) => {
+    expect(() => validateSearchQuery(query)).toThrow(InputError);
   });
 });

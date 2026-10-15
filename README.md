@@ -28,6 +28,7 @@ of scope.
 | Kind     | Name                        | What it does                                                            |
 | -------- | --------------------------- | ----------------------------------------------------------------------- |
 | Tool     | `recent_activity`           | Commits from the last N days, filterable by author and path             |
+| Tool     | `commit_search`             | Search commit messages for text, optionally by window, author and path  |
 | Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
@@ -143,6 +144,18 @@ in the overview resource) or its absolute path. It defaults to the first configu
 | `limit`  | integer | 50      | 1–200                                           |
 
 Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+
+### `commit_search`
+
+| Input    | Type    | Default | Notes                                                       |
+| -------- | ------- | ------- | ----------------------------------------------------------- |
+| `query`  | string  | –       | Required. Literal, case-insensitive; matches subject + body |
+| `days`   | integer | –       | 1–3650. Omit to search the whole history                    |
+| `author` | string  | –       | Substring of the author name, matched literally             |
+| `path`   | string  | –       | Repository-relative file or directory                       |
+| `limit`  | integer | 20      | 1–100                                                       |
+
+Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
 
 ### `file_hotspots`
 

@@ -204,6 +204,59 @@ describe('staleBranches', () => {
   });
 });
 
+describe('commitSearch', () => {
+  it('finds commits by message text, case-insensitively and literally', async () => {
+    const result = await insights.commitSearch(repo.path, { query: 'FEAT', limit: 20 });
+    expect(result.commits.map((c) => c.subject)).toEqual([
+      'feat!: drop legacy config',
+      'feat(api): add users endpoint',
+    ]);
+    expect(result.totalMatches).toBe(2);
+    expect(result.windowDays).toBeNull();
+
+    const regexLike = await insights.commitSearch(repo.path, { query: 'fe.t', limit: 20 });
+    expect(regexLike.commits).toEqual([]);
+  });
+
+  it('also searches the commit body', async () => {
+    const result = await insights.commitSearch(repo.path, { query: 'BREAKING CHANGE', limit: 20 });
+    expect(result.commits.map((c) => c.subject)).toEqual(['refactor(parser): simplify']);
+  });
+
+  it('combines with window, author and path filters', async () => {
+    const windowed = await insights.commitSearch(repo.path, { query: 'feat', days: 7, limit: 20 });
+    expect(windowed.commits.map((c) => c.subject)).toEqual(['feat!: drop legacy config']);
+
+    const byBob = await insights.commitSearch(repo.path, {
+      query: 'fix',
+      author: 'Bob',
+      limit: 20,
+    });
+    expect(byBob.commits.map((c) => c.subject)).toEqual(['fix: handle empty input']);
+
+    const byPath = await insights.commitSearch(repo.path, {
+      query: 'docs',
+      path: 'src/app.ts',
+      limit: 20,
+    });
+    expect(byPath.commits).toEqual([]);
+  });
+
+  it('reports truncation when the limit is hit', async () => {
+    const result = await insights.commitSearch(repo.path, { query: 'feat', limit: 1 });
+    expect(result.commits).toHaveLength(1);
+    expect(result.totalMatches).toBe(2);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects empty queries and unsafe paths', async () => {
+    await expect(insights.commitSearch(repo.path, { query: '  ', limit: 5 })).rejects.toThrow();
+    await expect(
+      insights.commitSearch(repo.path, { query: 'x', limit: 5, path: '../etc' }),
+    ).rejects.toThrow();
+  });
+});
+
 describe('contributorSummary', () => {
   it('counts commits per author on HEAD', async () => {
     const result = await insights.contributorSummary(repo.path, {

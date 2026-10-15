@@ -10,7 +10,12 @@ import {
   type Commit,
 } from '../git/parsers.js';
 import type { GitRunner } from '../git/runner.js';
-import { validateAuthor, validateRef, validateRepoPath } from '../git/validation.js';
+import {
+  validateAuthor,
+  validateRef,
+  validateRepoPath,
+  validateSearchQuery,
+} from '../git/validation.js';
 import { compileExcludes } from './glob.js';
 import { groupCommits, renderMarkdown, type ReleaseNoteSection } from './release-notes.js';
 
@@ -88,6 +93,42 @@ export class RepoInsights {
       windowDays: opts.days,
       totalCommits,
       truncated: totalCommits > commits.length,
+      commits,
+    };
+  }
+
+  /** Case-insensitive, literal search of commit messages (subject and body) on HEAD. */
+  async commitSearch(
+    repoPath: string,
+    opts: { query: string; days?: number; limit: number; author?: string; path?: string },
+  ) {
+    const filters = [
+      `--grep=${validateSearchQuery(opts.query)}`,
+      '--regexp-ignore-case',
+      '--fixed-strings',
+    ];
+    if (opts.days !== undefined) filters.push(sinceArg(opts.days, this.now()));
+    if (opts.author !== undefined) filters.push(`--author=${validateAuthor(opts.author)}`);
+    const paths = pathspec(opts.path);
+
+    const [logOut, countOut] = await Promise.all([
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_FORMAT}`,
+        `--max-count=${opts.limit}`,
+        ...filters,
+        'HEAD',
+        ...paths,
+      ]),
+      this.runGit(repoPath, ['rev-list', '--count', ...filters, 'HEAD', ...paths]),
+    ]);
+    const commits = parseCommits(logOut);
+    const totalMatches = Number.parseInt(countOut.trim(), 10) || commits.length;
+    return {
+      query: opts.query.trim(),
+      windowDays: opts.days ?? null,
+      totalMatches,
+      truncated: totalMatches > commits.length,
       commits,
     };
   }

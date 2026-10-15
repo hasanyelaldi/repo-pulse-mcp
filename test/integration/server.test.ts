@@ -29,9 +29,10 @@ afterAll(async () => {
 });
 
 describe('MCP server', () => {
-  it('lists five read-only tools', async () => {
+  it('lists six read-only tools', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'commit_search',
       'contributor_summary',
       'file_hotspots',
       'recent_activity',
