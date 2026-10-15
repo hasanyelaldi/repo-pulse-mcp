@@ -3,6 +3,7 @@ import { InputError } from '../errors.js';
 const MAX_REF_LENGTH = 200;
 const MAX_PATH_LENGTH = 500;
 const MAX_AUTHOR_LENGTH = 100;
+const MAX_QUERY_LENGTH = 200;
 
 // Branch/tag names, commit hashes and simple ancestry suffixes such as
 // "HEAD~3" or "v1.2.0^". Deliberately narrower than what git accepts: no
@@ -66,6 +67,18 @@ export function validateAuthor(author: string): string {
   }
   if (CONTROL_CHARS.test(trimmed)) {
     throw new InputError('Author filter must not contain control characters.');
+  }
+  return trimmed;
+}
+
+/** Validates a commit-message search query (matched as a fixed string, not a regex). */
+export function validateSearchQuery(query: string): string {
+  const trimmed = query.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_QUERY_LENGTH) {
+    throw new InputError(`Search query must be between 1 and ${MAX_QUERY_LENGTH} characters.`);
+  }
+  if (CONTROL_CHARS.test(trimmed)) {
+    throw new InputError('Search query must not contain control characters.');
   }
   return trimmed;
 }

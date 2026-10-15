@@ -72,6 +72,15 @@ const recentActivityOutput = z.object({
   commits: z.array(commitSchema),
 });
 
+const commitSearchOutput = z.object({
+  repo: repoOutputField,
+  query: z.string(),
+  windowDays: z.number().nullable().describe('Null when the whole history was searched.'),
+  totalMatches: z.number().describe('All matching commits, before applying the limit.'),
+  truncated: z.boolean(),
+  commits: z.array(commitSchema),
+});
+
 const fileHotspotsOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
@@ -198,6 +207,45 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.recentActivity(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'commit_search',
+    {
+      title: 'Commit search',
+      description:
+        'Search commit messages (subject and body) on HEAD for a literal, case-insensitive text, ' +
+        'newest first. Useful for finding when and why something changed, e.g. a ticket id, ' +
+        'a feature name or "revert". Optionally limited to a time window, author and/or path.',
+      inputSchema: z.object({
+        repo: repoField,
+        query: z.string().min(1).max(200).describe('Text to look for in commit messages.'),
+        days: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .optional()
+          .describe('Only search the last N days. Omit to search the whole history.'),
+        author: z
+          .string()
+          .max(100)
+          .optional()
+          .describe('Only commits whose author name contains this text.'),
+        path: z
+          .string()
+          .max(500)
+          .optional()
+          .describe('Only commits touching this file or directory.'),
+        limit: limitField(20, 100),
+      }),
+      outputSchema: commitSearchOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.commitSearch(r.path, opts)) });
     },
   );
 
