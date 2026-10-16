@@ -81,6 +81,21 @@ const commitSearchOutput = z.object({
   commits: z.array(commitSchema),
 });
 
+const fileHistoryOutput = z.object({
+  repo: repoOutputField,
+  path: z.string().describe('The requested path, as it is named at HEAD.'),
+  commitCount: z.number(),
+  truncated: z.boolean(),
+  renamed: z.boolean().describe('True if the file had a different path in a listed commit.'),
+  commits: z.array(
+    commitSchema.extend({
+      path: z.string().nullable().describe('Path of the file in this commit.'),
+      additions: z.number().nullable().describe('Null for binary files.'),
+      deletions: z.number().nullable(),
+    }),
+  ),
+});
+
 const fileHotspotsOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
@@ -246,6 +261,32 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.commitSearch(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'file_history',
+    {
+      title: 'File history',
+      description:
+        'List the commits on HEAD that changed a single file, newest first, following the file ' +
+        'across renames. Each commit includes the path it had then and lines added/removed. ' +
+        'Useful for "how did this file evolve?" and "who reworked it, and when?".',
+      inputSchema: z.object({
+        repo: repoField,
+        path: z
+          .string()
+          .min(1)
+          .max(500)
+          .describe('Repository-relative path of a single file, as named at HEAD.'),
+        limit: limitField(20, 100),
+      }),
+      outputSchema: fileHistoryOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.fileHistory(r.path, opts)) });
     },
   );
 

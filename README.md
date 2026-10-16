@@ -29,6 +29,7 @@ of scope.
 | -------- | --------------------------- | ----------------------------------------------------------------------- |
 | Tool     | `recent_activity`           | Commits from the last N days, filterable by author and path             |
 | Tool     | `commit_search`             | Search commit messages for text, optionally by window, author and path  |
+| Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
 | Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
@@ -157,6 +158,19 @@ Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHas
 
 Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
 
+### `file_history`
+
+| Input   | Type    | Default | Notes                                          |
+| ------- | ------- | ------- | ---------------------------------------------- |
+| `path`  | string  | –       | Required. Repository-relative file, as at HEAD |
+| `limit` | integer | 20      | 1–100                                          |
+
+Output: `{ repo, path, commitCount, truncated, renamed, commits: [{ hash, shortHash, author, date, subject, path, additions, deletions }] }`
+
+Renames are followed, so older commits report the path the file had at the time and `renamed` is
+`true` when the listed commits span more than one path. Merge commits are skipped; `additions` and
+`deletions` are `null` for binary files.
+
 ### `file_hotspots`
 
 | Input     | Type     | Default | Notes                                                                                            |
@@ -168,7 +182,8 @@ Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, s
 
 Output: `{ repo, windowDays, commitsScanned, scanTruncated, filesChanged, hotspots: [{ path, changes, additions, deletions, authors, lastChanged }] }`
 
-Merge commits are excluded and renames are not followed, so a renamed file starts fresh.
+Merge commits are excluded and renames are not followed, so a renamed file starts fresh. Use
+`file_history` to trace a single file across renames.
 
 ### `release_notes_draft`
 

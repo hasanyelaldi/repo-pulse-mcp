@@ -6,6 +6,7 @@ import {
   parseCommits,
   parseCommitsWithBody,
   parseCommitsWithNumstat,
+  renamedPath,
 } from '../../src/git/parsers.js';
 
 const HASH_A = 'a'.repeat(40);
@@ -91,5 +92,18 @@ describe('parseBranches', () => {
       { name: 'main', lastCommitDate: '2026-01-10T10:00:00+00:00', lastAuthor: 'Alice' },
       { name: 'feature/x', lastCommitDate: '2025-11-01T10:00:00+00:00', lastAuthor: 'Bob' },
     ]);
+  });
+});
+
+describe('renamedPath', () => {
+  it.each([
+    ['src/app.ts', 'src/app.ts'],
+    ['old.ts => new.ts', 'new.ts'],
+    ['src/{old.ts => new.ts}', 'src/new.ts'],
+    ['{src => lib}/util.ts', 'lib/util.ts'],
+    ['src/{ => nested}/util.ts', 'src/nested/util.ts'],
+    ['src/{nested => }/util.ts', 'src/util.ts'],
+  ])('%j -> %j', (input, expected) => {
+    expect(renamedPath(input)).toBe(expected);
   });
 });
