@@ -2,21 +2,26 @@ name: Release
 
 # Publishes to npm and the MCP Registry when a version tag (e.g. v0.2.0) is pushed.
 # Requires an NPM_TOKEN repository secret (npm automation or granular token).
+#
+# Running it manually (workflow_dispatch) skips npm and only (re)registers the
+# version from package.json in the MCP Registry, e.g. after a registry outage.
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Publish to npm and the MCP Registry
+  npm:
+    name: Publish to npm
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance and MCP Registry OIDC login
+      id-token: write # npm provenance
     steps:
       - uses: actions/checkout@v4
 
@@ -37,10 +42,45 @@ jobs:
       - run: npm ci
 
       # prepublishOnly runs the full check (lint, format, typecheck, tests, build).
+      # Skipped when the version is already on npm, so a re-run of the workflow is safe.
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if npm view "repo-pulse-mcp@${version}" version >/dev/null 2>&1; then
+            echo "repo-pulse-mcp@${version} is already published, skipping."
+          else
+            npm publish --provenance --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  mcp-registry:
+    name: Publish to the MCP Registry
+    needs: npm
+    # Also run on workflow_dispatch, where the npm job is skipped.
+    if: ${{ !cancelled() && (needs.npm.result == 'success' || needs.npm.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # MCP Registry OIDC login
+    steps:
+      - uses: actions/checkout@v4
+
+      # npm processes a new release for a short while before it can be fetched,
+      # and the MCP Registry rejects versions it cannot find on npm yet.
+      - name: Wait until the version is available on npm
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          for attempt in $(seq 1 30); do
+            if npm view "repo-pulse-mcp@${version}" version >/dev/null 2>&1; then
+              echo "repo-pulse-mcp@${version} is available."
+              exit 0
+            fi
+            echo "Waiting for repo-pulse-mcp@${version} on npm (attempt ${attempt}/30)..."
+            sleep 10
+          done
+          echo "repo-pulse-mcp@${version} did not appear on npm within 5 minutes." >&2
+          exit 1
 
       - name: Install mcp-publisher
         env:
