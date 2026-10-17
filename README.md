@@ -2,24 +2,27 @@
 
 [![CI](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/repo-pulse-mcp)](https://www.npmjs.com/package/repo-pulse-mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-6E56CF)](https://registry.modelcontextprotocol.io)
+[![Read-only](https://img.shields.io/badge/git-read--only-2EA44F)](#security-model)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/LICENSE)
 
-A **read-only [Model Context Protocol](https://modelcontextprotocol.io) server** that gives an AI
-assistant insight into local git repositories, so it can answer questions like:
+**Turn git history into answers your AI assistant can act on: what is risky in this branch, who
+should review it, which files keep breaking and what changed since the last release.**
 
-- _"What changed since the last release?"_
-- _"Which files change the most? Where is the churn?"_
-- _"Which files always change together with this one?"_
-- _"Which branches look stale, and which are already merged?"_
-- _"Draft release notes for v0.3.0."_
-- _"Write this week's engineering update."_
+repo-pulse is a **read-only [Model Context Protocol](https://modelcontextprotocol.io) server** for
+local git repositories. It runs over stdio, needs nothing but Node.js and git, never modifies a
+repository and never touches the network. Ask your assistant things like:
 
-It runs locally over stdio, needs nothing but Node.js and git, and never modifies a repository.
+- 🔍 _"I'm about to open a PR. What's risky, what did I forget, and who should review it?"_
+- 🐛 _"Which files keep breaking? Where is the churn?"_
+- 👥 _"Who knows the billing module best? Are we depending on a single person?"_
+- 🔗 _"Which files always change together with this one?"_
+- 🚀 _"What changed since the last release? Draft the release notes."_
+- 🧹 _"Which branches are stale, and which are already merged?"_
 
-It is platform-agnostic: it works with any local git repository, whether it was cloned from GitHub,
-GitLab, Bitbucket or anywhere else, or has no remote at all. It only reads local git history and
-never contacts a hosting service, so platform data such as pull requests, issues or CI status is out
-of scope.
+It works with any local git repository, whether it was cloned from GitHub, GitLab, Bitbucket or
+anywhere else, or has no remote at all. Platform data such as pull requests, issues or CI status
+is out of scope.
 
 ![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](https://raw.githubusercontent.com/hasanyelaldi/repo-pulse-mcp/main/docs/demo.gif)
 
@@ -34,8 +37,97 @@ Requires Node.js 22.12+ and git. There is nothing to clone or build: the server 
 claude mcp add repo-pulse -- npx -y repo-pulse-mcp --repo "$PWD"
 ```
 
-Then ask _"What changed since the last release?"_. For Claude Desktop and other MCP clients, see
-[Installation](#installation).
+Then ask _"What changed since the last release?"_ or _"Review my branch against main."_ For Claude
+Desktop and other MCP clients, see [Installation](#installation).
+
+## Features
+
+12 tools, grouped by the question they answer. 🆕 marks the newest ones.
+
+### 🔍 Code review and risk
+
+| Tool                | What it answers                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `review_context` 🆕 | One-call briefing for a branch or PR: changed files ranked by past churn and fixes, files that usually change with them but were left out, reviewers |
+| `file_hotspots`     | Files ranked by how often they changed, with how many changes were bug fixes. `types: ["fix"]` finds the files that keep breaking                    |
+| `change_coupling`   | File pairs that keep changing in the same commits: hidden dependencies that imports do not show                                                      |
+
+### 👥 Ownership and team
+
+| Tool                  | What it answers                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `knowledge_map` 🆕    | Who knows a file or directory, weighted toward recent work, plus the bus factor and files that depend on one person |
+| `contributor_summary` | Commits per author in a time window, optionally for one path                                                        |
+
+### 🚀 Releases and branches
+
+| Tool                  | What it answers                                                             |
+| --------------------- | --------------------------------------------------------------------------- |
+| `release_notes_draft` | Commits between two refs grouped by conventional-commit type, plus Markdown |
+| `list_tags`           | Tags newest first, the latest release on HEAD and how much is unreleased    |
+| `compare_refs`        | Ahead/behind counts and the commits between two branches, tags or commits   |
+| `stale_branches`      | Branches with no commits for N days, and whether each is already merged     |
+
+### 🕒 History and activity
+
+| Tool              | What it answers                                                      |
+| ----------------- | -------------------------------------------------------------------- |
+| `recent_activity` | Commits from the last N days, filterable by author and path          |
+| `commit_search`   | Commits whose message mentions a ticket id, feature name or any text |
+| `file_history`    | One file's commits with line stats, following it across renames      |
+
+### 📦 Also included
+
+| Kind     | Name                        | What it does                                                       |
+| -------- | --------------------------- | ------------------------------------------------------------------ |
+| Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts  |
+| Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update |
+
+All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
+`structuredContent` and a JSON text block for older clients. Full inputs and outputs are in the
+[Tool reference](#tool-reference).
+
+## Example conversations
+
+> **You:** I'm about to open a PR for `feature/search`. Anything I should know?
+>
+> **Assistant** _(calls `review_context` with `base: "main"`, `head: "feature/search"`)_: 4 commits
+> touching 6 files. **`src/api.ts` is the risky one**: it changed 14 times on `main` in the last six
+> months and 6 of those were bug fixes. **You may have forgotten `test/api.test.ts`**: it changed
+> together with `src/api.ts` in 9 of 10 commits but is not in this branch. **Suggested reviewer:
+> Alice**, who holds most of the recent knowledge of these files.
+
+> **You:** Who knows `src/billing/` best? Are we depending on one person?
+>
+> **Assistant** _(calls `knowledge_map` with `path: "src/billing"`)_: The bus factor is **1**. Carol
+> holds 72% of the recent knowledge and is the main owner of 11 of 14 files; 9 of them depend on
+> her alone. Bob is a distant second at 18%. Pairing Bob with Carol on the next billing change
+> would spread the knowledge…
+
+> **You:** Where is the churn this quarter, and what keeps breaking?
+>
+> **Assistant** _(calls `file_hotspots` with `days: 90`)_: `src/core/insights.ts` changed in 23
+> commits by 3 people, far more than anything else, and 9 of those commits were fixes. That's a
+> good candidate for splitting up or adding tests…
+
+> **You:** What changed since the last release?
+>
+> **Assistant** _(calls `release_notes_draft` with defaults: latest tag → HEAD)_: Since **v0.2.0**
+> there are 14 commits. One breaking change: the config file moved to `repo-pulse.json`. New
+> features: an author filter for activity and branch merge detection. Three bug fixes, mostly
+> around empty repositories. Here's a Markdown draft you can paste into the GitHub release: …
+
+> **You:** Can we clean up some branches?
+>
+> **Assistant** _(calls `stale_branches` with `days: 30`)_: 6 branches haven't seen a commit in 30+
+> days. 4 of them are already merged into `main` and are safe to delete: …
+
+> **You:** _(selects the `weekly_engineering_update` prompt)_
+>
+> **Assistant** _(calls `recent_activity`, `contributor_summary`, `file_hotspots`, `stale_branches`)_:
+> **Highlights** — …
+
+_The conversations are illustrative: names and numbers are made up._
 
 ## Why repo-pulse?
 
@@ -57,7 +149,9 @@ What that means in practice:
 - **Fewer steps, correct numbers.** Questions like "where is the churn?", "what goes into the
   release notes?" or "which branches are merged and stale?" otherwise take several shell commands
   and hand-written counting pipelines, which can be silently wrong. repo-pulse does the counting
-  in tested code and returns deterministic JSON that says which filters it applied.
+  in tested code and returns deterministic JSON that says which filters it applied. Some tools
+  go further than any single git command: `review_context` combines churn, fix history, change
+  coupling and ownership for a branch in one call.
 - **Read-only you can verify.** Every tool is annotated `readOnlyHint` and backed by a git
   subcommand allowlist (see [Security model](#security-model)), so a client can run it without
   asking for approval each time. You would not give the same permission to a shell or to a git
@@ -84,32 +178,10 @@ only a read-only shell and once with only repo-pulse. Full method, answers and c
 | Release notes, latest vs previous | 3 · 14.0 s · ✅              | 3 · 12.5 s · ✅                   |
 | Merged branches stale for 90 days | 5 · 15.9 s · ✅              | 2 · 4.3 s · ✅                    |
 
-The honest summary: repo-pulse is not cheaper in tokens for simple one-off questions, because a
-good model writes compact shell pipelines and repo-pulse's tool definitions cost about 2.5k
-tokens. It wins on multi-step questions, on getting the numbers right, and in clients that have
+The benchmark was run with v0.3.0 (10 tools). The honest summary: repo-pulse is not cheaper in
+tokens for simple one-off questions, because a good model writes compact shell pipelines and
+repo-pulse's tool definitions cost tokens in every session (about 3.5k for the current 12 tools). It wins on multi-step questions, on getting the numbers right, and in clients that have
 no shell at all.
-
-## Features
-
-| Kind     | Name                        | What it does                                                            |
-| -------- | --------------------------- | ----------------------------------------------------------------------- |
-| Tool     | `recent_activity`           | Commits from the last N days, filterable by author and path             |
-| Tool     | `commit_search`             | Search commit messages for text, optionally by window, author and path  |
-| Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
-| Tool     | `file_hotspots`             | Files ranked by how often they changed, with fix counts and type filter |
-| Tool     | `change_coupling`           | File pairs that keep changing in the same commits (hidden dependencies) |
-| Tool     | `list_tags`                 | Tags newest first, latest release on HEAD and unreleased commit count   |
-| Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
-| Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
-| Tool     | `review_context`            | Risky files, forgotten companions and reviewers for a branch or PR      |
-| Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
-| Tool     | `knowledge_map`             | Who knows a file or directory: recency-weighted ownership, bus factor   |
-| Tool     | `contributor_summary`       | Commits per author in a time window                                     |
-| Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts       |
-| Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update      |
-
-All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
-`structuredContent` and a JSON text block for older clients.
 
 ## Requirements
 
@@ -179,71 +251,42 @@ The repository is mounted read-only. On SELinux hosts (Fedora, RHEL) add `,Z` to
 options. Replace `podman` with `docker` if you prefer; the image uses no Docker-specific features.
 For an MCP client, use `podman` as the `command` and the rest as `args`.
 
-## Example conversations
-
-> **You:** What changed since the last release?
->
-> **Assistant** _(calls `release_notes_draft` with defaults: latest tag → HEAD)_: Since **v0.2.0**
-> there are 14 commits. One breaking change: the config file moved to `repo-pulse.json`. New
-> features: an author filter for activity and branch merge detection. Three bug fixes, mostly
-> around empty repositories. Here's a Markdown draft you can paste into the GitHub release: …
-
-> **You:** Where has most of the work happened this quarter? Anything risky?
->
-> **Assistant** _(calls `file_hotspots` with `days: 90`)_: `src/core/insights.ts` changed in 23
-> commits by 3 people, far more than anything else. That's a good candidate for splitting up or
-> adding tests…
-
-> **You:** Can we clean up some branches?
->
-> **Assistant** _(calls `stale_branches` with `days: 30`)_: 6 branches haven't seen a commit in 30+
-> days. 4 of them are already merged into `main` and are safe to delete: …
-
-> **You:** _(selects the `weekly_engineering_update` prompt)_
->
-> **Assistant** _(calls `recent_activity`, `contributor_summary`, `file_hotspots`, `stale_branches`)_:
-> **Highlights** — …
-
 ## Tool reference
 
 Every tool accepts an optional `repo` argument: a repository **name** (the directory name, shown
 in the overview resource) or its absolute path. It defaults to the first configured repository.
 
-### `recent_activity`
+### `review_context`
 
-| Input    | Type    | Default | Notes                                           |
-| -------- | ------- | ------- | ----------------------------------------------- |
-| `days`   | integer | 7       | 1–3650                                          |
-| `author` | string  | –       | Substring of the author name, matched literally |
-| `path`   | string  | –       | Repository-relative file or directory           |
-| `limit`  | integer | 50      | 1–200                                           |
+| Input               | Type     | Default | Notes                                                       |
+| ------------------- | -------- | ------- | ----------------------------------------------------------- |
+| `base`              | string   | –       | Required. Target ref the changes would merge into           |
+| `head`              | string   | `HEAD`  | Ref with the changes                                        |
+| `days`              | integer  | 180     | How far back to read the history of `base`                  |
+| `halfLifeDays`      | integer  | 90      | Recency weighting for reviewers, as in `knowledge_map`      |
+| `exclude`           | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots`      |
+| `minShared`         | integer  | 2       | Minimum shared commits for a missing companion              |
+| `minDegree`         | integer  | 50      | Minimum coupling degree (%) for a missing companion         |
+| `maxFilesPerCommit` | integer  | 30      | History commits touching more files are skipped (see below) |
+| `limit`             | integer  | 20      | 1–100, applies to each list separately                      |
 
-Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+Output: `{ repo, base, head, baseCommit, headCommit, windowDays, commits, truncated, changeAuthors, filesChanged, additions, deletions, historyScanned, scanTruncated, files: [{ path, additions, deletions, changes, fixes, lastChanged, owner, ownerShare }], missingCompanions: [{ path, coupledWith, sharedCommits, degree }], reviewers: [{ author, share, filesKnown, lastCommit }] }`
 
-### `commit_search`
+One call that combines `file_hotspots`, `change_coupling` and `knowledge_map` for the files
+changed in `base..head`, read against the history of `base`:
 
-| Input    | Type    | Default | Notes                                                       |
-| -------- | ------- | ------- | ----------------------------------------------------------- |
-| `query`  | string  | –       | Required. Literal, case-insensitive; matches subject + body |
-| `days`   | integer | –       | 1–3650. Omit to search the whole history                    |
-| `author` | string  | –       | Substring of the author name, matched literally             |
-| `path`   | string  | –       | Repository-relative file or directory                       |
-| `limit`  | integer | 20      | 1–100                                                       |
+- `files` are the changed files, riskiest first: most fixes on `base`, then most changes. New
+  files have no history, so `changes` is 0 and `owner` is `null`.
+- `missingCompanions` are files that were not changed but usually change together with a changed
+  file (same `degree` as `change_coupling`), such as a test or config that may have been
+  forgotten.
+- `reviewers` are ranked by recent-weighted knowledge of the changed files and leave out the
+  authors of the changes themselves. `share` is relative to everyone's knowledge, change authors
+  included.
 
-Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
-
-### `file_history`
-
-| Input   | Type    | Default | Notes                                          |
-| ------- | ------- | ------- | ---------------------------------------------- |
-| `path`  | string  | –       | Required. Repository-relative file, as at HEAD |
-| `limit` | integer | 20      | 1–100                                          |
-
-Output: `{ repo, path, commitCount, truncated, renamed, commits: [{ hash, shortHash, author, date, subject, path, additions, deletions }] }`
-
-Renames are followed, so older commits report the path the file had at the time and `renamed` is
-`true` when the listed commits span more than one path. Merge commits are skipped; `additions` and
-`deletions` are `null` for binary files.
+The changed files come from the non-merge commits in `base..head`, so a file that was changed and
+later changed back still counts. Commits touching more than `maxFilesPerCommit` files still count
+toward `changes` and `fixes`, but not toward ownership or coupling. Renames are not followed.
 
 ### `file_hotspots`
 
@@ -289,89 +332,6 @@ or fixture that must be kept in sync). Large commits such as bulk renames or for
 skipped because they would couple every file they touch. Merge commits are excluded and renames
 are not followed.
 
-### `list_tags`
-
-| Input   | Type    | Default | Notes |
-| ------- | ------- | ------- | ----- |
-| `limit` | integer | 20      | 1–200 |
-
-Output: `{ repo, totalTags, latestOnHead, commitsSinceLatest, tags: [{ name, date, shortHash, subject }] }`
-
-Tags are sorted by tag date, newest first. `latestOnHead` is the latest tag reachable from `HEAD`,
-which can differ from the newest tag when maintenance releases are tagged on other branches.
-`commitsSinceLatest` counts the commits after it, i.e. unreleased work.
-
-### `release_notes_draft`
-
-| Input  | Type   | Default                | Notes                                 |
-| ------ | ------ | ---------------------- | ------------------------------------- |
-| `from` | string | latest tag before `to` | Exclusive. Tag, branch or commit hash |
-| `to`   | string | `HEAD`                 | Inclusive                             |
-
-Output: `{ repo, from, to, commitCount, truncated, sections: [{ key, title, entries: [{ shortHash, scope, description, author }] }], markdown }`
-
-Sections, in order: Breaking Changes, Features, Bug Fixes, Performance, Refactoring,
-Documentation, Tests, Build System, Continuous Integration, Chores, Reverts, Other Changes.
-A commit is breaking if its header has `!` (`feat!: …`) or its body has a `BREAKING CHANGE:`
-footer; breaking commits also appear in their type section. Merge commits are skipped.
-
-### `compare_refs`
-
-| Input   | Type    | Default | Notes                                          |
-| ------- | ------- | ------- | ---------------------------------------------- |
-| `base`  | string  | –       | Required. Ref to compare against (e.g. `main`) |
-| `head`  | string  | `HEAD`  | Ref to compare                                 |
-| `limit` | integer | 20      | 1–100, applies to each commit list separately  |
-
-Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, truncated, aheadCommits: [{ hash, shortHash, author, date, subject }], behindCommits: [...] }`
-
-`ahead` counts commits reachable from `head` but not `base`, `behind` the reverse. `status` is
-`identical`, `ahead`, `behind` or `diverged`. Both refs go through the same validation as
-`release_notes_draft`, and the counts include merge commits.
-
-### `review_context`
-
-| Input               | Type     | Default | Notes                                                       |
-| ------------------- | -------- | ------- | ----------------------------------------------------------- |
-| `base`              | string   | –       | Required. Target ref the changes would merge into           |
-| `head`              | string   | `HEAD`  | Ref with the changes                                        |
-| `days`              | integer  | 180     | How far back to read the history of `base`                  |
-| `halfLifeDays`      | integer  | 90      | Recency weighting for reviewers, as in `knowledge_map`      |
-| `exclude`           | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots`      |
-| `minShared`         | integer  | 2       | Minimum shared commits for a missing companion              |
-| `minDegree`         | integer  | 50      | Minimum coupling degree (%) for a missing companion         |
-| `maxFilesPerCommit` | integer  | 30      | History commits touching more files are skipped (see below) |
-| `limit`             | integer  | 20      | 1–100, applies to each list separately                      |
-
-Output: `{ repo, base, head, baseCommit, headCommit, windowDays, commits, truncated, changeAuthors, filesChanged, additions, deletions, historyScanned, scanTruncated, files: [{ path, additions, deletions, changes, fixes, lastChanged, owner, ownerShare }], missingCompanions: [{ path, coupledWith, sharedCommits, degree }], reviewers: [{ author, share, filesKnown, lastCommit }] }`
-
-One call that combines `file_hotspots`, `change_coupling` and `knowledge_map` for the files
-changed in `base..head`, read against the history of `base`:
-
-- `files` are the changed files, riskiest first: most fixes on `base`, then most changes. New
-  files have no history, so `changes` is 0 and `owner` is `null`.
-- `missingCompanions` are files that were not changed but usually change together with a changed
-  file (same `degree` as `change_coupling`), such as a test or config that may have been
-  forgotten.
-- `reviewers` are ranked by recent-weighted knowledge of the changed files and leave out the
-  authors of the changes themselves. `share` is relative to everyone's knowledge, change authors
-  included.
-
-The changed files come from the non-merge commits in `base..head`, so a file that was changed and
-later changed back still counts. Commits touching more than `maxFilesPerCommit` files still count
-toward `changes` and `fixes`, but not toward ownership or coupling. Renames are not followed.
-
-### `stale_branches`
-
-| Input           | Type    | Default | Notes                                    |
-| --------------- | ------- | ------- | ---------------------------------------- |
-| `days`          | integer | 30      | Minimum age of the latest commit         |
-| `includeRemote` | boolean | false   | Also list remote-tracking branches       |
-| `mergedOnly`    | boolean | false   | Only branches already merged into `HEAD` |
-| `limit`         | integer | 50      | 1–200                                    |
-
-Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, lastCommitDate, lastAuthor, daysSinceLastCommit, mergedIntoHead }] }`
-
 ### `knowledge_map`
 
 | Input               | Type     | Default | Notes                                                  |
@@ -403,6 +363,93 @@ a quick reviewer suggestion for a path. Merge commits are excluded and renames a
 | `limit`         | integer | 20      | 1–100                 |
 
 Output: `{ repo, windowDays, totalCommits, scanTruncated, contributorCount, contributors: [{ author, commits, firstCommit, lastCommit }] }`
+
+### `release_notes_draft`
+
+| Input  | Type   | Default                | Notes                                 |
+| ------ | ------ | ---------------------- | ------------------------------------- |
+| `from` | string | latest tag before `to` | Exclusive. Tag, branch or commit hash |
+| `to`   | string | `HEAD`                 | Inclusive                             |
+
+Output: `{ repo, from, to, commitCount, truncated, sections: [{ key, title, entries: [{ shortHash, scope, description, author }] }], markdown }`
+
+Sections, in order: Breaking Changes, Features, Bug Fixes, Performance, Refactoring,
+Documentation, Tests, Build System, Continuous Integration, Chores, Reverts, Other Changes.
+A commit is breaking if its header has `!` (`feat!: …`) or its body has a `BREAKING CHANGE:`
+footer; breaking commits also appear in their type section. Merge commits are skipped.
+
+### `list_tags`
+
+| Input   | Type    | Default | Notes |
+| ------- | ------- | ------- | ----- |
+| `limit` | integer | 20      | 1–200 |
+
+Output: `{ repo, totalTags, latestOnHead, commitsSinceLatest, tags: [{ name, date, shortHash, subject }] }`
+
+Tags are sorted by tag date, newest first. `latestOnHead` is the latest tag reachable from `HEAD`,
+which can differ from the newest tag when maintenance releases are tagged on other branches.
+`commitsSinceLatest` counts the commits after it, i.e. unreleased work.
+
+### `compare_refs`
+
+| Input   | Type    | Default | Notes                                          |
+| ------- | ------- | ------- | ---------------------------------------------- |
+| `base`  | string  | –       | Required. Ref to compare against (e.g. `main`) |
+| `head`  | string  | `HEAD`  | Ref to compare                                 |
+| `limit` | integer | 20      | 1–100, applies to each commit list separately  |
+
+Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, truncated, aheadCommits: [{ hash, shortHash, author, date, subject }], behindCommits: [...] }`
+
+`ahead` counts commits reachable from `head` but not `base`, `behind` the reverse. `status` is
+`identical`, `ahead`, `behind` or `diverged`. Both refs go through the same validation as
+`release_notes_draft`, and the counts include merge commits.
+
+### `stale_branches`
+
+| Input           | Type    | Default | Notes                                    |
+| --------------- | ------- | ------- | ---------------------------------------- |
+| `days`          | integer | 30      | Minimum age of the latest commit         |
+| `includeRemote` | boolean | false   | Also list remote-tracking branches       |
+| `mergedOnly`    | boolean | false   | Only branches already merged into `HEAD` |
+| `limit`         | integer | 50      | 1–200                                    |
+
+Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, lastCommitDate, lastAuthor, daysSinceLastCommit, mergedIntoHead }] }`
+
+### `recent_activity`
+
+| Input    | Type    | Default | Notes                                           |
+| -------- | ------- | ------- | ----------------------------------------------- |
+| `days`   | integer | 7       | 1–3650                                          |
+| `author` | string  | –       | Substring of the author name, matched literally |
+| `path`   | string  | –       | Repository-relative file or directory           |
+| `limit`  | integer | 50      | 1–200                                           |
+
+Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+
+### `commit_search`
+
+| Input    | Type    | Default | Notes                                                       |
+| -------- | ------- | ------- | ----------------------------------------------------------- |
+| `query`  | string  | –       | Required. Literal, case-insensitive; matches subject + body |
+| `days`   | integer | –       | 1–3650. Omit to search the whole history                    |
+| `author` | string  | –       | Substring of the author name, matched literally             |
+| `path`   | string  | –       | Repository-relative file or directory                       |
+| `limit`  | integer | 20      | 1–100                                                       |
+
+Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+
+### `file_history`
+
+| Input   | Type    | Default | Notes                                          |
+| ------- | ------- | ------- | ---------------------------------------------- |
+| `path`  | string  | –       | Required. Repository-relative file, as at HEAD |
+| `limit` | integer | 20      | 1–100                                          |
+
+Output: `{ repo, path, commitCount, truncated, renamed, commits: [{ hash, shortHash, author, date, subject, path, additions, deletions }] }`
+
+Renames are followed, so older commits report the path the file had at the time and `renamed` is
+`true` when the listed commits span more than one path. Merge commits are skipped; `additions` and
+`deletions` are `null` for binary files.
 
 ### Resource: `repo://{name}/overview`
 
@@ -530,7 +577,7 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
   branches is not counted.
 - Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map` and
   `review_context`.
-- Each session pays about 2.5k tokens for the tool definitions, and `release_notes_draft`
+- Each session pays about 3.5k tokens for the tool definitions, and `release_notes_draft`
   returns its content both as sections and as Markdown, so on simple questions a shell can be
   cheaper (see [Benchmark](#benchmark)).
 - Possible next steps: a leaner `release_notes_draft` output, an HTTP transport for team use.
