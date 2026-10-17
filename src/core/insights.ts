@@ -293,6 +293,57 @@ export class RepoInsights {
     };
   }
 
+  /** How far `head` has diverged from `base`: commit counts and lists on each side. */
+  async compareRefs(repoPath: string, opts: { base: string; head: string; limit: number }) {
+    const [baseCommit, headCommit] = await Promise.all([
+      this.resolveCommit(repoPath, opts.base),
+      this.resolveCommit(repoPath, opts.head),
+    ]);
+    const list = (range: string) =>
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_FORMAT}`,
+        `--max-count=${opts.limit}`,
+        range,
+      ]).then(parseCommits);
+
+    const [countOut, aheadCommits, behindCommits] = await Promise.all([
+      // Symmetric difference: left side is only in base, right side only in head.
+      this.runGit(repoPath, [
+        'rev-list',
+        '--left-right',
+        '--count',
+        `${baseCommit}...${headCommit}`,
+      ]),
+      list(`${baseCommit}..${headCommit}`),
+      list(`${headCommit}..${baseCommit}`),
+    ]);
+    const [behind = 0, ahead = 0] = countOut
+      .trim()
+      .split(/\s+/)
+      .map((n) => Number.parseInt(n, 10) || 0);
+
+    return {
+      base: opts.base,
+      head: opts.head,
+      baseCommit,
+      headCommit,
+      ahead,
+      behind,
+      status:
+        ahead === 0 && behind === 0
+          ? ('identical' as const)
+          : behind === 0
+            ? ('ahead' as const)
+            : ahead === 0
+              ? ('behind' as const)
+              : ('diverged' as const),
+      truncated: ahead > aheadCommits.length || behind > behindCommits.length,
+      aheadCommits,
+      behindCommits,
+    };
+  }
+
   async staleBranches(
     repoPath: string,
     opts: { days: number; limit: number; includeRemote: boolean; mergedOnly?: boolean },

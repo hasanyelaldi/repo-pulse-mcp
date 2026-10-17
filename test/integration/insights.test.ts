@@ -309,6 +309,73 @@ describe('fileHistory', () => {
   });
 });
 
+describe('compareRefs', () => {
+  it('lists commits on each side of a diverged branch', async () => {
+    const result = await insights.compareRefs(repo.path, {
+      base: 'main',
+      head: 'feature/old-experiment',
+      limit: 20,
+    });
+    expect(result.status).toBe('diverged');
+    expect(result.ahead).toBe(1);
+    expect(result.behind).toBe(6);
+    expect(result.truncated).toBe(false);
+    expect(result.aheadCommits.map((c) => c.subject)).toEqual(['feat: risky experiment']);
+    expect(result.behindCommits.map((c) => c.subject)).toEqual([
+      'Update dependencies',
+      'refactor(parser): simplify',
+      'docs: update readme',
+      'feat!: drop legacy config',
+      'fix: handle empty input',
+      'feat(api): add users endpoint',
+    ]);
+    expect(result.baseCommit).toMatch(/^[0-9a-f]{40,64}$/);
+  });
+
+  it('classifies ahead, behind and identical refs', async () => {
+    const behind = await insights.compareRefs(repo.path, {
+      base: 'main',
+      head: 'merged-branch',
+      limit: 20,
+    });
+    expect([behind.status, behind.ahead, behind.behind]).toEqual(['behind', 0, 5]);
+
+    const ahead = await insights.compareRefs(repo.path, {
+      base: 'v0.1.0',
+      head: 'HEAD',
+      limit: 20,
+    });
+    expect([ahead.status, ahead.ahead, ahead.behind]).toEqual(['ahead', 6, 0]);
+
+    const same = await insights.compareRefs(repo.path, { base: 'main', head: 'HEAD', limit: 20 });
+    expect(same.status).toBe('identical');
+    expect(same.aheadCommits).toEqual([]);
+  });
+
+  it('reports truncation when the limit is hit', async () => {
+    const result = await insights.compareRefs(repo.path, {
+      base: 'v0.1.0',
+      head: 'HEAD',
+      limit: 2,
+    });
+    expect(result.ahead).toBe(6);
+    expect(result.aheadCommits).toHaveLength(2);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects unknown and unsafe refs', async () => {
+    await expect(
+      insights.compareRefs(repo.path, { base: 'nope', head: 'HEAD', limit: 5 }),
+    ).rejects.toThrow(/Unknown ref/);
+    await expect(
+      insights.compareRefs(repo.path, { base: 'main..HEAD', head: 'HEAD', limit: 5 }),
+    ).rejects.toThrow(InputError);
+    await expect(
+      insights.compareRefs(repo.path, { base: 'main', head: '--all', limit: 5 }),
+    ).rejects.toThrow(InputError);
+  });
+});
+
 describe('contributorSummary', () => {
   it('counts commits per author on HEAD', async () => {
     const result = await insights.contributorSummary(repo.path, {

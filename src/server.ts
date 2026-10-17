@@ -137,6 +137,20 @@ const releaseNotesOutput = z.object({
   markdown: z.string(),
 });
 
+const compareRefsOutput = z.object({
+  repo: repoOutputField,
+  base: z.string(),
+  head: z.string(),
+  baseCommit: z.string().describe('Full hash that "base" resolved to.'),
+  headCommit: z.string().describe('Full hash that "head" resolved to.'),
+  ahead: z.number().describe('Commits reachable from head but not from base.'),
+  behind: z.number().describe('Commits reachable from base but not from head.'),
+  status: z.enum(['identical', 'ahead', 'behind', 'diverged']),
+  truncated: z.boolean().describe('True if either commit list was cut off by the limit.'),
+  aheadCommits: z.array(commitSchema).describe('Commits only in head, newest first.'),
+  behindCommits: z.array(commitSchema).describe('Commits only in base, newest first.'),
+});
+
 const staleBranchesOutput = z.object({
   repo: repoOutputField,
   thresholdDays: z.number(),
@@ -343,6 +357,29 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.releaseNotesDraft(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'compare_refs',
+    {
+      title: 'Compare refs',
+      description:
+        'Compare two refs (branches, tags or commits): how many commits "head" is ahead of and ' +
+        'behind "base", and which commits those are, newest first. Useful for "how far behind ' +
+        'main is my branch?" or "what is on this branch that is not released yet?".',
+      inputSchema: z.object({
+        repo: repoField,
+        base: z.string().min(1).max(200).describe('Ref to compare against, e.g. "main" or a tag.'),
+        head: z.string().max(200).default('HEAD').describe('Ref to compare, e.g. a branch.'),
+        limit: limitField(20, 100),
+      }),
+      outputSchema: compareRefsOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.compareRefs(r.path, opts)) });
     },
   );
 

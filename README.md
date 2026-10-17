@@ -32,6 +32,7 @@ of scope.
 | Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
 | Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
+| Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
 | Tool     | `contributor_summary`       | Commits per author in a time window                                     |
 | Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts       |
@@ -199,6 +200,20 @@ Documentation, Tests, Build System, Continuous Integration, Chores, Reverts, Oth
 A commit is breaking if its header has `!` (`feat!: …`) or its body has a `BREAKING CHANGE:`
 footer; breaking commits also appear in their type section. Merge commits are skipped.
 
+### `compare_refs`
+
+| Input   | Type    | Default | Notes                                          |
+| ------- | ------- | ------- | ---------------------------------------------- |
+| `base`  | string  | –       | Required. Ref to compare against (e.g. `main`) |
+| `head`  | string  | `HEAD`  | Ref to compare                                 |
+| `limit` | integer | 20      | 1–100, applies to each commit list separately  |
+
+Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, truncated, aheadCommits: [{ hash, shortHash, author, date, subject }], behindCommits: [...] }`
+
+`ahead` counts commits reachable from `head` but not `base`, `behind` the reverse. `status` is
+`identical`, `ahead`, `behind` or `diverged`. Both refs go through the same validation as
+`release_notes_draft`, and the counts include merge commits.
+
 ### `stale_branches`
 
 | Input           | Type    | Default | Notes                                    |
@@ -337,8 +352,7 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
 - Renames are not followed in `file_hotspots`.
-- Possible next steps: an HTTP transport for team use, per-directory ownership stats,
-  a `compare_refs` tool.
+- Possible next steps: an HTTP transport for team use, per-directory ownership stats.
 
 ## License
 
