@@ -99,13 +99,22 @@ const fileHistoryOutput = z.object({
 const fileHotspotsOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
+  types: z.array(z.string()).nullable().describe('Commit types counted; null means all commits.'),
   commitsScanned: z.number(),
   scanTruncated: z.boolean(),
+  commitsMatched: z.number().describe('Scanned commits that passed the types filter.'),
+  fixesFromKeywords: z
+    .number()
+    .describe(
+      'Counted fixes that have no conventional-commit header and were recognized by words ' +
+        'like "fix" or "bug" in the subject. Non-zero means fix counts are an estimate.',
+    ),
   filesChanged: z.number(),
   hotspots: z.array(
     z.object({
       path: z.string(),
       changes: z.number().describe('Number of commits that touched the file.'),
+      fixes: z.number().describe('How many of those commits were fixes.'),
       additions: z.number(),
       deletions: z.number(),
       authors: z.number().describe('Distinct authors who touched the file.'),
@@ -392,8 +401,10 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     {
       title: 'File hotspots',
       description:
-        'Rank files by how many commits changed them in the last N days (merge commits excluded). ' +
-        'Useful for spotting churn, risky areas and refactoring candidates.',
+        'Rank files by how many commits changed them in the last N days (merge commits excluded), ' +
+        'with how many of those commits were fixes. Pass types: ["fix"] to rank by bug fixes ' +
+        'only and find the files that keep breaking. Useful for spotting churn, risky areas ' +
+        'and refactoring candidates.',
       inputSchema: z.object({
         repo: repoField,
         days: daysField(90),
@@ -405,6 +416,15 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .describe(
             'Glob patterns for files to leave out, e.g. ["*.lock", "dist/", "docs/**/*.md"]. ' +
               'A pattern without "/" matches at any depth; a trailing "/" excludes a directory.',
+          ),
+        types: z
+          .array(z.string().regex(/^[a-zA-Z]{1,20}$/))
+          .min(1)
+          .max(12)
+          .optional()
+          .describe(
+            'Only count commits of these conventional-commit types, e.g. ["fix"]. Commits ' +
+              'without a type count as "fix" when their subject mentions fix, bug or hotfix.',
           ),
         limit: limitField(10, 100),
       }),

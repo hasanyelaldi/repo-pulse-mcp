@@ -5,6 +5,7 @@ import { GitError, InputError } from '../../src/errors.js';
 import { runGit } from '../../src/git/runner.js';
 import {
   createCouplingRepo,
+  createFixRepo,
   createFixtureRepo,
   createPlainDir,
   createRenameRepo,
@@ -119,6 +120,57 @@ describe('fileHotspots', () => {
     await expect(
       insights.fileHotspots(repo.path, { days: 30, limit: 3, exclude: [''] }),
     ).rejects.toThrow(InputError);
+  });
+
+  describe('with commit types', () => {
+    let fixRepo: TempRepo;
+    const summarize = (hotspots: { path: string; changes: number; fixes: number }[]) =>
+      hotspots.map((h) => [h.path, h.changes, h.fixes]);
+
+    beforeAll(async () => {
+      fixRepo = await createFixRepo();
+    });
+
+    afterAll(async () => {
+      await fixRepo?.cleanup();
+    });
+
+    it('counts fixes per file, by type or by keyword', async () => {
+      const result = await insights.fileHotspots(fixRepo.path, { days: 30, limit: 10 });
+      expect(result).toMatchObject({ types: null, commitsMatched: 5, fixesFromKeywords: 1 });
+      expect(summarize(result.hotspots)).toEqual([
+        ['src/db.ts', 3, 2],
+        ['README.md', 1, 0],
+        ['src/api.ts', 1, 1],
+        ['src/log.ts', 1, 0],
+      ]);
+    });
+
+    it('ranks by fixes only when filtered', async () => {
+      const result = await insights.fileHotspots(fixRepo.path, {
+        days: 30,
+        limit: 10,
+        types: ['FIX'],
+      });
+      expect(result).toMatchObject({ types: ['fix'], commitsScanned: 5, commitsMatched: 2 });
+      expect(summarize(result.hotspots)).toEqual([
+        ['src/db.ts', 2, 2],
+        ['src/api.ts', 1, 1],
+      ]);
+      expect(result.filesChanged).toBe(2);
+    });
+
+    it('filters by any type and rejects malformed types', async () => {
+      const docs = await insights.fileHotspots(fixRepo.path, {
+        days: 30,
+        limit: 10,
+        types: ['docs'],
+      });
+      expect(summarize(docs.hotspots)).toEqual([['README.md', 1, 0]]);
+      await expect(
+        insights.fileHotspots(fixRepo.path, { days: 30, limit: 10, types: ['fix!'] }),
+      ).rejects.toThrow(InputError);
+    });
   });
 });
 
