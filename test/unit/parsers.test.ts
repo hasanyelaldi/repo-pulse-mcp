@@ -39,6 +39,20 @@ describe('parseCommits', () => {
     expect(parseCommits('\n')).toEqual([]);
   });
 
+  it('turns the email field into an opaque author key', () => {
+    const record = (email: string) =>
+      `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}feat: x${F}${email}\n`;
+    const [commit] = parseCommits(record('Alice@Example.com'));
+    expect(commit?.authorKey).toMatch(/^[0-9a-f]{16}$/);
+    expect(JSON.stringify(commit)).not.toContain('@');
+    expect(parseCommits(record(' alice@example.com '))[0]?.authorKey).toBe(commit?.authorKey);
+    expect(parseCommits(record('bob@example.com'))[0]?.authorKey).not.toBe(commit?.authorKey);
+    expect(parseCommits(record(''))[0]).not.toHaveProperty('authorKey');
+    expect(
+      parseCommitsWithNumstat(`${record('alice@example.com')}1\t0\ta.ts\n`)[0]?.authorKey,
+    ).toBe(commit?.authorKey);
+  });
+
   it('skips malformed records', () => {
     expect(parseCommits(`${R}not-a-hash${F}x${F}y${F}z\n`)).toEqual([]);
   });

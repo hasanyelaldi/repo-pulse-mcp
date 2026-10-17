@@ -4,6 +4,7 @@ import { RepoInsights } from '../../src/core/insights.js';
 import { GitError, InputError } from '../../src/errors.js';
 import { runGit } from '../../src/git/runner.js';
 import {
+  createAliasRepo,
   createCouplingRepo,
   createFixRepo,
   createFixtureRepo,
@@ -680,6 +681,88 @@ describe('reviewContext', () => {
     await expect(
       insights.reviewContext(reviewRepo.path, { ...defaults, head: '--output=/tmp/x' }),
     ).rejects.toThrow(InputError);
+  });
+});
+
+describe('author identity', () => {
+  let aliasRepo: TempRepo;
+
+  beforeAll(async () => {
+    aliasRepo = await createAliasRepo();
+  });
+
+  afterAll(async () => {
+    await aliasRepo?.cleanup();
+  });
+
+  it('counts one person committing under two names once, by their latest name', async () => {
+    const contributors = await insights.contributorSummary(aliasRepo.path, {
+      days: 30,
+      limit: 20,
+      includeMerges: false,
+    });
+    expect(contributors.contributors.map((c) => [c.author, c.commits])).toEqual([
+      ['ally', 2],
+      ['Bob Example', 1],
+    ]);
+
+    const hotspots = await insights.fileHotspots(aliasRepo.path, { days: 30, limit: 10 });
+    expect(hotspots.hotspots[0]).toMatchObject({ path: 'src/a.ts', authors: 2 });
+
+    const map = await insights.knowledgeMap(aliasRepo.path, {
+      days: 30,
+      halfLifeDays: 90,
+      limit: 10,
+      maxFilesPerCommit: 30,
+    });
+    expect(map.authors.map((a) => a.author)).toEqual(['ally', 'Bob Example']);
+    expect(map.busFactor).toBe(1);
+  });
+
+  it('does not suggest the change author as a reviewer under another name', async () => {
+    const result = await insights.reviewContext(aliasRepo.path, {
+      base: 'main',
+      head: 'feature/a',
+      days: 30,
+      halfLifeDays: 90,
+      minShared: 2,
+      minDegree: 50,
+      maxFilesPerCommit: 30,
+      limit: 20,
+    });
+    expect(result.changeAuthors).toEqual(['Alice Example']);
+    expect(result.reviewers.map((r) => r.author)).toEqual(['Bob Example']);
+    expect(result.files[0]).toMatchObject({ owner: 'Alice Example', ownerShare: 67 });
+  });
+
+  it('never returns email addresses or author keys', async () => {
+    const outputs = await Promise.all([
+      insights.contributorSummary(aliasRepo.path, { days: 30, limit: 20, includeMerges: false }),
+      insights.fileHotspots(aliasRepo.path, { days: 30, limit: 10 }),
+      insights.recentActivity(aliasRepo.path, { days: 30, limit: 10 }),
+      insights.fileHistory(aliasRepo.path, { path: 'src/a.ts', limit: 10 }),
+      insights.knowledgeMap(aliasRepo.path, {
+        days: 30,
+        halfLifeDays: 90,
+        limit: 10,
+        maxFilesPerCommit: 30,
+      }),
+      insights.reviewContext(aliasRepo.path, {
+        base: 'main',
+        head: 'feature/a',
+        days: 30,
+        halfLifeDays: 90,
+        minShared: 2,
+        minDegree: 50,
+        maxFilesPerCommit: 30,
+        limit: 20,
+      }),
+    ]);
+    for (const output of outputs) {
+      const json = JSON.stringify(output);
+      expect(json).not.toContain('@');
+      expect(json).not.toContain('authorKey');
+    }
   });
 });
 
