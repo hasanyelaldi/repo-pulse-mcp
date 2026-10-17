@@ -6,7 +6,7 @@
   "type": "module",
   "main": "./build/index.js",
   "bin": {
-    "repo-pulse-mcp": "./build/index.js"
+    "repo-pulse-mcp": "build/index.js"
   },
   "files": [
     "build",

@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/repo-pulse-mcp)](https://www.npmjs.com/package/repo-pulse-mcp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/LICENSE)
 
 A **read-only [Model Context Protocol](https://modelcontextprotocol.io) server** that gives an AI
 assistant insight into local git repositories, so it can answer questions like:
 
 - _"What changed since the last release?"_
 - _"Which files change the most? Where is the churn?"_
+- _"Which files always change together with this one?"_
 - _"Which branches look stale, and which are already merged?"_
 - _"Draft release notes for v0.3.0."_
 - _"Write this week's engineering update."_
@@ -20,9 +21,21 @@ GitLab, Bitbucket or anywhere else, or has no remote at all. It only reads local
 never contacts a hosting service, so platform data such as pull requests, issues or CI status is out
 of scope.
 
-![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](docs/demo.gif)
+![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](https://raw.githubusercontent.com/hasanyelaldi/repo-pulse-mcp/main/docs/demo.gif)
 
-_A real Claude Code session on [vitejs/vite](https://github.com/vitejs/vite). See [how it was recorded](bench/README.md#demo-gif)._
+_A real Claude Code session on [vitejs/vite](https://github.com/vitejs/vite). See [how it was recorded](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/bench/README.md#demo-gif)._
+
+## Quick start
+
+Requires Node.js 22.12+ and git. There is nothing to clone or build: the server runs from npm.
+
+```bash
+# Claude Code: run inside the repository you want to ask about
+claude mcp add repo-pulse -- npx -y repo-pulse-mcp --repo "$PWD"
+```
+
+Then ask _"What changed since the last release?"_. For Claude Desktop and other MCP clients, see
+[Installation](#installation).
 
 ## Why repo-pulse?
 
@@ -62,7 +75,7 @@ has a shell and you only need the occasional `git log`, you probably do not need
 
 Claude Code (Sonnet 5.5) answered the same four questions about vite and express twice: once with
 only a read-only shell and once with only repo-pulse. Full method, answers and caveats are in
-[bench/README.md](bench/README.md).
+[bench/README.md](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/bench/README.md).
 
 | Question                          | Shell: turns · time · result | repo-pulse: turns · time · result |
 | --------------------------------- | ---------------------------- | --------------------------------- |
@@ -410,6 +423,7 @@ src/
 ├── errors.ts             # InputError (safe to show) and GitError
 ├── core/
 │   ├── insights.ts       # one method per feature: builds git args, aggregates results
+│   ├── glob.ts           # exclude globs, matched in-process on paths git returned
 │   └── release-notes.ts  # pure conventional-commit parsing, grouping and Markdown
 └── git/
     ├── runner.ts         # the only place that spawns processes (allowlist, limits, env)
@@ -449,7 +463,7 @@ npm run inspect             # build first; opens MCP Inspector against this repo
 
 **Releasing.** Bump the version in `package.json`, `server.json` (both `version` fields) and
 `SERVER_VERSION` in `src/server.ts` (a unit test fails if they differ), merge, then push a tag:
-`git tag v0.2.0 && git push origin v0.2.0`. The release workflow runs the full check, publishes
+`git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. The release workflow runs the full check, publishes
 to npm with provenance and registers the new version in the MCP Registry. Both use GitHub OIDC
 (npm Trusted Publishing and the registry's `github-oidc` login), so no publishing token is
 stored. If only the registry step fails, run the workflow manually (`gh workflow run
@@ -473,8 +487,11 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
 - Renames are not followed in `file_hotspots`, `change_coupling` and `knowledge_map`.
-- Possible next steps: an HTTP transport for team use.
+- Each session pays about 2.5k tokens for the tool definitions, and `release_notes_draft`
+  returns its content both as sections and as Markdown, so on simple questions a shell can be
+  cheaper (see [Benchmark](#benchmark)).
+- Possible next steps: a leaner `release_notes_draft` output, an HTTP transport for team use.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/LICENSE)

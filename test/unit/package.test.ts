@@ -30,6 +30,7 @@ describe('package metadata', () => {
 
   it('ships only the build output and docs', () => {
     expect(pkg.files).toEqual(['build', 'README.md', 'LICENSE']);
-    expect(pkg.bin['repo-pulse-mcp']).toBe('./build/index.js');
+    // No leading "./": npm 11 drops such bin entries on publish, breaking npx.
+    expect(pkg.bin['repo-pulse-mcp']).toBe('build/index.js');
   });
 });
