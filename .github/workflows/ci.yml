@@ -42,6 +42,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # npm silently rewrites or drops invalid package.json fields on publish
+      # (e.g. a "bin" entry it does not accept). Fail instead of shipping that.
+      - name: Check the package would publish unchanged
+        run: |
+          npm publish --dry-run --ignore-scripts 2>&1 | tee publish-dry-run.log
+          if grep -q "auto-corrected" publish-dry-run.log; then
+            echo "npm would auto-correct package.json; run 'npm pkg fix' and commit the result." >&2
+            exit 1
+          fi
+
   container:
     name: Container image builds
     runs-on: ubuntu-latest
