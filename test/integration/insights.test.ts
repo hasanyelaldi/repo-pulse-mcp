@@ -4,6 +4,7 @@ import { RepoInsights } from '../../src/core/insights.js';
 import { GitError, InputError } from '../../src/errors.js';
 import { runGit } from '../../src/git/runner.js';
 import {
+  createCouplingRepo,
   createFixtureRepo,
   createPlainDir,
   createRenameRepo,
@@ -372,6 +373,73 @@ describe('compareRefs', () => {
     ).rejects.toThrow(InputError);
     await expect(
       insights.compareRefs(repo.path, { base: 'main', head: '--all', limit: 5 }),
+    ).rejects.toThrow(InputError);
+  });
+});
+
+describe('changeCoupling', () => {
+  let couplingRepo: TempRepo;
+  const defaults = { days: 30, limit: 10, minShared: 2, maxFilesPerCommit: 30 };
+  const summarize = (
+    pairs: { fileA: string; fileB: string; sharedCommits: number; degree: number }[],
+  ) => pairs.map((p) => [p.fileA, p.fileB, p.sharedCommits, p.degree]);
+
+  beforeAll(async () => {
+    couplingRepo = await createCouplingRepo();
+  });
+
+  afterAll(async () => {
+    await couplingRepo?.cleanup();
+  });
+
+  it('ranks file pairs by shared commits, then degree', async () => {
+    const result = await insights.changeCoupling(couplingRepo.path, defaults);
+    expect(result.commitsScanned).toBe(6);
+    expect(result.commitsSkipped).toBe(0);
+    expect(summarize(result.pairs)).toEqual([
+      ['src/api.ts', 'test/api.test.ts', 4, 89],
+      ['docs/api.md', 'test/api.test.ts', 2, 67],
+      ['docs/api.md', 'src/api.ts', 2, 57],
+      ['src/api.ts', 'src/db.ts', 2, 50],
+    ]);
+    expect(result.pairs[0]).toMatchObject({ revisionsA: 5, revisionsB: 4 });
+    expect(result.pairCount).toBe(4);
+  });
+
+  it('skips large commits', async () => {
+    const result = await insights.changeCoupling(couplingRepo.path, {
+      ...defaults,
+      maxFilesPerCommit: 3,
+    });
+    expect(result.commitsSkipped).toBe(1);
+    expect(summarize(result.pairs)).toEqual([['src/api.ts', 'test/api.test.ts', 3, 86]]);
+  });
+
+  it('filters by file, excludes globs and honours minShared', async () => {
+    const forDb = await insights.changeCoupling(couplingRepo.path, {
+      ...defaults,
+      file: 'src/db.ts',
+      minShared: 1,
+    });
+    expect(summarize(forDb.pairs)).toEqual([
+      ['src/api.ts', 'src/db.ts', 2, 50],
+      ['docs/api.md', 'src/db.ts', 1, 40],
+      ['src/db.ts', 'test/api.test.ts', 1, 29],
+    ]);
+
+    const noDocs = await insights.changeCoupling(couplingRepo.path, {
+      ...defaults,
+      exclude: ['docs/'],
+    });
+    expect(noDocs.pairs.some((p) => p.fileA.startsWith('docs/'))).toBe(false);
+    expect(noDocs.pairCount).toBe(2);
+  });
+
+  it('respects the time window and rejects unsafe paths', async () => {
+    const recent = await insights.changeCoupling(couplingRepo.path, { ...defaults, days: 4 });
+    expect(recent.commitsScanned).toBe(3);
+    await expect(
+      insights.changeCoupling(couplingRepo.path, { ...defaults, file: '../etc/passwd' }),
     ).rejects.toThrow(InputError);
   });
 });
