@@ -1,6 +1,6 @@
 {
   "name": "repo-pulse-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A read-only MCP server that gives AI assistants insight into a local git repository.",
   "mcpName": "io.github.hasanyelaldi/repo-pulse-mcp",
   "type": "module",
