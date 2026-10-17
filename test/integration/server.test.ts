@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 describe('MCP server', () => {
-  it('lists eleven read-only tools', async () => {
+  it('lists twelve read-only tools', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       'change_coupling',
@@ -42,6 +42,7 @@ describe('MCP server', () => {
       'list_tags',
       'recent_activity',
       'release_notes_draft',
+      'review_context',
       'stale_branches',
     ]);
     for (const tool of tools) {

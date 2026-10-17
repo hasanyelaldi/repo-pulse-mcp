@@ -261,6 +261,61 @@ const knowledgeMapOutput = z.object({
     .describe('Most frequently changed files first.'),
 });
 
+const reviewContextOutput = z.object({
+  repo: repoOutputField,
+  base: z.string(),
+  head: z.string(),
+  baseCommit: z.string().describe('Full hash that "base" resolved to.'),
+  headCommit: z.string().describe('Full hash that "head" resolved to.'),
+  windowDays: z.number().describe('How far back the history of base was read.'),
+  commits: z.number().describe('Non-merge commits in base..head.'),
+  truncated: z.boolean().describe('True if base..head has more commits than were read.'),
+  changeAuthors: z.array(z.string()).describe('Authors of base..head, left out of reviewers.'),
+  filesChanged: z.number(),
+  additions: z.number(),
+  deletions: z.number(),
+  historyScanned: z.number().describe('Commits on base read for history and ownership.'),
+  scanTruncated: z.boolean(),
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        additions: z.number().describe('Lines added in base..head.'),
+        deletions: z.number(),
+        changes: z.number().describe('Commits on base that touched the file in the window.'),
+        fixes: z.number().describe('How many of those commits were fixes.'),
+        lastChanged: z.string().nullable().describe('Null when base has no history for it.'),
+        owner: z.string().nullable().describe('Author with the most recent-weighted knowledge.'),
+        ownerShare: z.number().nullable().describe('Owner share of the file, as a percentage.'),
+      }),
+    )
+    .describe('Riskiest first: most fixes, then most changes on base.'),
+  missingCompanions: z
+    .array(
+      z.object({
+        path: z.string().describe('File that was not changed in base..head.'),
+        coupledWith: z.string().describe('Changed file it usually changes together with.'),
+        sharedCommits: z.number(),
+        degree: z
+          .number()
+          .describe('Shared commits as a percentage of the average revisions of the two files.'),
+      }),
+    )
+    .describe('Files that usually change with the changed files but were left out.'),
+  reviewers: z
+    .array(
+      z.object({
+        author: z.string(),
+        share: z
+          .number()
+          .describe('Percentage of all recent-weighted knowledge of the changed files.'),
+        filesKnown: z.number().describe('Changed files this author has worked on.'),
+        lastCommit: z.string().describe('Latest commit to one of the changed files.'),
+      }),
+    )
+    .describe('Who knows the changed files best, excluding the change authors.'),
+});
+
 const contributorSummaryOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
@@ -625,6 +680,70 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.knowledgeMap(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'review_context',
+    {
+      title: 'Review context',
+      description:
+        'Review briefing for the changes in base..head (e.g. a branch or pull request): the ' +
+        'changed files ranked by how often they changed and broke on base, files that usually ' +
+        'change together with them but were left out (a forgotten test, config or caller), and ' +
+        'who knows the changed files best as suggested reviewers. Merge commits are excluded.',
+      inputSchema: z.object({
+        repo: repoField,
+        base: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe('Target ref the changes would merge into, e.g. "main".'),
+        head: z.string().max(200).default('HEAD').describe('Ref with the changes, e.g. a branch.'),
+        days: daysField(180),
+        halfLifeDays: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .default(90)
+          .describe('For reviewers: a commit counts half as much for every this many days of age.'),
+        exclude: z
+          .array(z.string().min(1).max(200))
+          .max(20)
+          .optional()
+          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+        minShared: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .default(2)
+          .describe('Minimum shared commits for a missing companion.'),
+        minDegree: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(50)
+          .describe('Minimum coupling degree (percentage) for a missing companion.'),
+        maxFilesPerCommit: z
+          .number()
+          .int()
+          .min(2)
+          .max(500)
+          .default(30)
+          .describe(
+            'Skip history commits touching more files than this (bulk renames, formatting).',
+          ),
+        limit: limitField(20, 100),
+      }),
+      outputSchema: reviewContextOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.reviewContext(r.path, opts)) });
     },
   );
 
