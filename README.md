@@ -1,6 +1,7 @@
 # repo-pulse-mcp
 
 [![CI](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/hasanyelaldi/repo-pulse-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/repo-pulse-mcp)](https://www.npmjs.com/package/repo-pulse-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A **read-only [Model Context Protocol](https://modelcontextprotocol.io) server** that gives an AI
@@ -83,23 +84,26 @@ All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and ret
 
 ## Installation
 
-```bash
-git clone https://github.com/hasanyelaldi/repo-pulse-mcp.git
-cd repo-pulse-mcp
-npm ci
-npm run build
-```
-
-The server only serves repositories you explicitly allow. Pass them as CLI arguments or an
-environment variable (separated by `:` on macOS/Linux, `;` on Windows):
+The package is published on npm, so there is nothing to clone or build. The server only serves
+repositories you explicitly allow. Pass them as CLI arguments or an environment variable
+(separated by `:` on macOS/Linux, `;` on Windows):
 
 ```bash
-node build/index.js --repo ~/code/my-app --repo ~/code/my-lib
+npx -y repo-pulse-mcp --repo ~/code/my-app --repo ~/code/my-lib
 # or
-REPO_PULSE_REPOS=~/code/my-app:~/code/my-lib node build/index.js
+REPO_PULSE_REPOS=~/code/my-app:~/code/my-lib npx -y repo-pulse-mcp
 ```
 
-Without any configured repository the server refuses to start.
+Without any configured repository the server refuses to start. It is also listed in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.hasanyelaldi/repo-pulse-mcp`.
+
+### Claude Code
+
+Run this inside the repository you want to ask about:
+
+```bash
+claude mcp add repo-pulse -- npx -y repo-pulse-mcp --repo "$PWD"
+```
 
 ### Claude Desktop
 
@@ -110,21 +114,21 @@ Windows: `%APPDATA%\Claude\`) and restart Claude Desktop. Use absolute paths:
 {
   "mcpServers": {
     "repo-pulse": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/repo-pulse-mcp/build/index.js",
-        "--repo",
-        "/absolute/path/to/your/repository"
-      ]
+      "command": "npx",
+      "args": ["-y", "repo-pulse-mcp", "--repo", "/absolute/path/to/your/repository"]
     }
   }
 }
 ```
 
-### Claude Code
+### From source
 
 ```bash
-claude mcp add repo-pulse -- node /absolute/path/to/repo-pulse-mcp/build/index.js --repo "$PWD"
+git clone https://github.com/hasanyelaldi/repo-pulse-mcp.git
+cd repo-pulse-mcp
+npm ci
+npm run build
+node build/index.js --repo /absolute/path/to/your/repository
 ```
 
 ### Podman / Docker
@@ -389,6 +393,12 @@ npm run build               # compile to build/
 npm run check               # everything CI runs
 npm run inspect             # build first; opens MCP Inspector against this repository
 ```
+
+**Releasing.** Bump the version in `package.json`, `server.json` (both `version` fields) and
+`SERVER_VERSION` in `src/server.ts` (a unit test fails if they differ), merge, then push a tag:
+`git tag v0.2.0 && git push origin v0.2.0`. The release workflow runs the full check, publishes
+to npm with provenance and registers the new version in the MCP Registry. It needs an
+`NPM_TOKEN` repository secret.
 
 **Tests.** Unit tests cover the parsers, validation, config parsing and release-notes grouping.
 Integration tests create a temporary git repository with a scripted history (fictional authors,

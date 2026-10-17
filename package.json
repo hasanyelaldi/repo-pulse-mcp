@@ -2,6 +2,7 @@
   "name": "repo-pulse-mcp",
   "version": "0.1.0",
   "description": "A read-only MCP server that gives AI assistants insight into a local git repository.",
+  "mcpName": "io.github.hasanyelaldi/repo-pulse-mcp",
   "type": "module",
   "main": "./build/index.js",
   "bin": {
@@ -23,7 +24,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "inspect": "npx @modelcontextprotocol/inspector node build/index.js -e REPO_PULSE_REPOS=$PWD",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
+    "prepublishOnly": "npm run check"
   },
   "engines": {
     "node": ">=22.12"
@@ -33,7 +35,10 @@
     "model-context-protocol",
     "git",
     "typescript",
-    "ai-tools"
+    "ai-tools",
+    "mcp-server",
+    "claude",
+    "code-analysis"
   ],
   "author": "hasanyelaldi",
   "license": "MIT",
