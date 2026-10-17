@@ -397,9 +397,10 @@ npm run inspect             # build first; opens MCP Inspector against this repo
 **Releasing.** Bump the version in `package.json`, `server.json` (both `version` fields) and
 `SERVER_VERSION` in `src/server.ts` (a unit test fails if they differ), merge, then push a tag:
 `git tag v0.2.0 && git push origin v0.2.0`. The release workflow runs the full check, publishes
-to npm with provenance and registers the new version in the MCP Registry. It needs an
-`NPM_TOKEN` repository secret. If only the registry step fails, run the workflow manually
-(`gh workflow run release.yml`): it skips npm and retries the registry.
+to npm with provenance and registers the new version in the MCP Registry. Both use GitHub OIDC
+(npm Trusted Publishing and the registry's `github-oidc` login), so no publishing token is
+stored. If only the registry step fails, run the workflow manually (`gh workflow run
+release.yml`): it skips npm and retries the registry.
 
 **Tests.** Unit tests cover the parsers, validation, config parsing and release-notes grouping.
 Integration tests create a temporary git repository with a scripted history (fictional authors,

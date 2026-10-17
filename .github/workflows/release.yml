@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes to npm and the MCP Registry when a version tag (e.g. v0.2.0) is pushed.
-# Requires an NPM_TOKEN repository secret (npm automation or granular token).
+# npm publishing uses Trusted Publishing (OIDC), so no npm token is stored anywhere.
+# The trusted publisher is configured on npmjs.com for this repository and release.yml.
 #
 # Running it manually (workflow_dispatch) skips npm and only (re)registers the
 # version from package.json in the MCP Registry, e.g. after a registry outage.
@@ -21,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +30,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1+, newer than the npm bundled with Node 22.
+      - name: Update npm
+        run: npm install --global npm@^11.5.1
 
       - name: Check that the tag matches the package version
         run: |
@@ -43,16 +47,15 @@ jobs:
 
       # prepublishOnly runs the full check (lint, format, typecheck, tests, build).
       # Skipped when the version is already on npm, so a re-run of the workflow is safe.
+      # Provenance is generated automatically for trusted publishing from a public repo.
       - name: Publish to npm
         run: |
           version="$(node -p 'require("./package.json").version')"
           if npm view "repo-pulse-mcp@${version}" version >/dev/null 2>&1; then
             echo "repo-pulse-mcp@${version} is already published, skipping."
           else
-            npm publish --provenance --access public
+            npm publish --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   mcp-registry:
     name: Publish to the MCP Registry
