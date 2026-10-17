@@ -31,6 +31,7 @@ import {
 // single call cheap even on very large repositories.
 export const MAX_COMMITS_SCANNED = 5_000;
 export const MAX_RELEASE_COMMITS = 500;
+export const MAX_REVIEW_COMMITS = 500;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -688,6 +689,190 @@ export class RepoInsights {
         lastCommit: a.lastCommit,
       })),
       files: fileList.slice(0, opts.limit),
+    };
+  }
+
+  /**
+   * Context for reviewing the changes in base..head: how risky each changed
+   * file has been on base, files that usually change with them but were left
+   * out, and who knows the changed files best.
+   */
+  async reviewContext(
+    repoPath: string,
+    opts: {
+      base: string;
+      head: string;
+      days: number;
+      halfLifeDays: number;
+      minShared: number;
+      minDegree: number;
+      maxFilesPerCommit: number;
+      limit: number;
+      exclude?: string[];
+    },
+  ) {
+    const isExcluded = compileExcludes(opts.exclude);
+    const [baseCommit, headCommit] = await Promise.all([
+      this.resolveCommit(repoPath, opts.base),
+      this.resolveCommit(repoPath, opts.head),
+    ]);
+    const now = this.now();
+    const numstatLog = (...args: string[]) =>
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_FORMAT}`,
+        '--numstat',
+        '--no-renames',
+        '--no-merges',
+        '--no-ext-diff',
+        '--no-textconv',
+        ...args,
+      ]).then(parseCommitsWithNumstat);
+    const [all, history] = await Promise.all([
+      numstatLog(`--max-count=${MAX_REVIEW_COMMITS + 1}`, `${baseCommit}..${headCommit}`),
+      numstatLog(`--max-count=${MAX_COMMITS_SCANNED}`, sinceArg(opts.days, now), baseCommit),
+    ]);
+    const changes = all.slice(0, MAX_REVIEW_COMMITS);
+
+    // What the branch changed.
+    const changed = new Map<string, { additions: number; deletions: number }>();
+    const changeAuthors = new Set<string>();
+    for (const commit of changes) {
+      changeAuthors.add(commit.author);
+      for (const file of commit.files) {
+        if (isExcluded(file.path)) continue;
+        const entry = changed.get(file.path) ?? { additions: 0, deletions: 0 };
+        entry.additions += file.additions ?? 0;
+        entry.deletions += file.deletions ?? 0;
+        changed.set(file.path, entry);
+      }
+    }
+
+    // How those files behaved on base.
+    const stats = new Map<string, { changes: number; fixes: number; lastChanged: string }>();
+    const knowledge = new Map<string, Map<string, number>>();
+    const authorLastCommit = new Map<string, string>();
+    const revisions = new Map<string, number>();
+    const shared = new Map<string, number>();
+    // git log is newest-first, so the first time we see a file or author is its latest commit.
+    for (const commit of history) {
+      const paths = [...new Set(commit.files.map((f) => f.path))].filter((p) => !isExcluded(p));
+      const touched = paths.filter((p) => changed.has(p));
+      const isFix = commitType(commit.subject).type === 'fix';
+      for (const p of touched) {
+        const entry = stats.get(p) ?? { changes: 0, fixes: 0, lastChanged: commit.date };
+        entry.changes += 1;
+        if (isFix) entry.fixes += 1;
+        stats.set(p, entry);
+      }
+      // Bulk commits would make everyone an owner of everything and couple every file.
+      if (touched.length === 0 || paths.length > opts.maxFilesPerCommit) continue;
+
+      const ageDays = Math.max(0, now.getTime() - new Date(commit.date).getTime()) / DAY_MS;
+      const weight = 0.5 ** (ageDays / opts.halfLifeDays);
+      for (const p of touched) {
+        const weights = knowledge.get(commit.author) ?? new Map<string, number>();
+        weights.set(p, (weights.get(p) ?? 0) + weight);
+        knowledge.set(commit.author, weights);
+      }
+      if (!authorLastCommit.has(commit.author)) authorLastCommit.set(commit.author, commit.date);
+
+      for (const p of paths) {
+        revisions.set(p, (revisions.get(p) ?? 0) + 1);
+        if (changed.has(p)) continue;
+        for (const c of touched) {
+          // NUL cannot appear in a path, so it is a safe key separator.
+          const key = `${c}\0${p}`;
+          shared.set(key, (shared.get(key) ?? 0) + 1);
+        }
+      }
+    }
+
+    const ownerOf = (path: string) => {
+      const weights = [...knowledge.entries()]
+        .map(([author, w]) => [author, w.get(path) ?? 0] as const)
+        .filter(([, w]) => w > 0)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      const total = weights.reduce((sum, [, w]) => sum + w, 0);
+      const [owner, ownerWeight] = weights[0] ?? [null, 0];
+      return { owner, ownerShare: total > 0 ? Math.round((ownerWeight / total) * 100) : null };
+    };
+    const files = [...changed.entries()]
+      .map(([path, c]) => {
+        const s = stats.get(path);
+        return {
+          path,
+          additions: c.additions,
+          deletions: c.deletions,
+          changes: s?.changes ?? 0,
+          fixes: s?.fixes ?? 0,
+          lastChanged: s?.lastChanged ?? null,
+          ...ownerOf(path),
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.fixes - a.fixes ||
+          b.changes - a.changes ||
+          b.additions + b.deletions - (a.additions + a.deletions) ||
+          a.path.localeCompare(b.path),
+      );
+
+    // Keep only the strongest link for each file that was left out.
+    const companions = new Map<
+      string,
+      { path: string; coupledWith: string; sharedCommits: number; degree: number }
+    >();
+    for (const [key, sharedCommits] of shared) {
+      const [coupledWith = '', path = ''] = key.split('\0');
+      const avg = ((revisions.get(coupledWith) ?? 0) + (revisions.get(path) ?? 0)) / 2;
+      const degree = Math.round((sharedCommits / avg) * 100);
+      if (sharedCommits < opts.minShared || degree < opts.minDegree) continue;
+      const best = companions.get(path);
+      if (
+        best === undefined ||
+        degree > best.degree ||
+        (degree === best.degree && sharedCommits > best.sharedCommits)
+      ) {
+        companions.set(path, { path, coupledWith, sharedCommits, degree });
+      }
+    }
+    const missingCompanions = [...companions.values()].sort(
+      (a, b) =>
+        b.degree - a.degree || b.sharedCommits - a.sharedCommits || a.path.localeCompare(b.path),
+    );
+
+    const totalWeight = [...knowledge.values()]
+      .flatMap((w) => [...w.values()])
+      .reduce((sum, w) => sum + w, 0);
+    const reviewers = [...knowledge.entries()]
+      .filter(([author]) => !changeAuthors.has(author))
+      .map(([author, w]) => ({
+        author,
+        weight: [...w.values()].reduce((sum, v) => sum + v, 0),
+        filesKnown: w.size,
+        lastCommit: authorLastCommit.get(author) ?? '',
+      }))
+      .sort((a, b) => b.weight - a.weight || a.author.localeCompare(b.author))
+      .map(({ weight, ...r }) => ({ ...r, share: Math.round((weight / totalWeight) * 100) }));
+
+    return {
+      base: opts.base,
+      head: opts.head,
+      baseCommit,
+      headCommit,
+      windowDays: opts.days,
+      commits: changes.length,
+      truncated: all.length > MAX_REVIEW_COMMITS,
+      changeAuthors: [...changeAuthors].sort(),
+      filesChanged: files.length,
+      additions: files.reduce((sum, f) => sum + f.additions, 0),
+      deletions: files.reduce((sum, f) => sum + f.deletions, 0),
+      historyScanned: history.length,
+      scanTruncated: history.length >= MAX_COMMITS_SCANNED,
+      files: files.slice(0, opts.limit),
+      missingCompanions: missingCompanions.slice(0, opts.limit),
+      reviewers: reviewers.slice(0, opts.limit),
     };
   }
 

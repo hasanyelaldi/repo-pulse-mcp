@@ -267,3 +267,42 @@ export async function createFixRepo(): Promise<TempRepo> {
 
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
+
+/**
+ * Creates a feature branch to review against main (days before {@link NOW}):
+ *
+ *   30  feat: users api                    alice   (src/api.ts, test/api.test.ts)
+ *   25  fix: api validation                bob     (src/api.ts, test/api.test.ts)
+ *   20  fix(api): paging                   alice   (src/api.ts, test/api.test.ts)
+ *   15  feat: db                           carol   (src/db.ts)
+ *   10  docs: readme                       bob     (README.md)
+ *    3  feat: user search                  bob     (src/api.ts, src/search.ts)   feature/search
+ *    2  test: search                       bob     (test/search.test.ts)         feature/search
+ *    1  chore: bump                        alice   (package.json)                main only
+ */
+export async function createReviewRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-review-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  const write = async (daysAgo: number, by: Person, subject: string, files: string[]) =>
+    commit(path, {
+      daysAgo,
+      by,
+      subject,
+      files: Object.fromEntries(files.map((f) => [f, `// ${subject}\n`])),
+    });
+
+  await write(30, 'alice', 'feat: users api', ['src/api.ts', 'test/api.test.ts']);
+  await write(25, 'bob', 'fix: api validation', ['src/api.ts', 'test/api.test.ts']);
+  await write(20, 'alice', 'fix(api): paging', ['src/api.ts', 'test/api.test.ts']);
+  await write(15, 'carol', 'feat: db', ['src/db.ts']);
+  await write(10, 'bob', 'docs: readme', ['README.md']);
+
+  git(path, ['checkout', '--quiet', '-b', 'feature/search']);
+  await write(3, 'bob', 'feat: user search', ['src/api.ts', 'src/search.ts']);
+  await write(2, 'bob', 'test: search', ['test/search.test.ts']);
+  git(path, ['checkout', '--quiet', 'main']);
+  await write(1, 'alice', 'chore: bump', ['package.json']);
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}

@@ -101,6 +101,7 @@ no shell at all.
 | Tool     | `list_tags`                 | Tags newest first, latest release on HEAD and unreleased commit count   |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
+| Tool     | `review_context`            | Risky files, forgotten companions and reviewers for a branch or PR      |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
 | Tool     | `knowledge_map`             | Who knows a file or directory: recency-weighted ownership, bus factor   |
 | Tool     | `contributor_summary`       | Commits per author in a time window                                     |
@@ -328,6 +329,38 @@ Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, trun
 `identical`, `ahead`, `behind` or `diverged`. Both refs go through the same validation as
 `release_notes_draft`, and the counts include merge commits.
 
+### `review_context`
+
+| Input               | Type     | Default | Notes                                                       |
+| ------------------- | -------- | ------- | ----------------------------------------------------------- |
+| `base`              | string   | –       | Required. Target ref the changes would merge into           |
+| `head`              | string   | `HEAD`  | Ref with the changes                                        |
+| `days`              | integer  | 180     | How far back to read the history of `base`                  |
+| `halfLifeDays`      | integer  | 90      | Recency weighting for reviewers, as in `knowledge_map`      |
+| `exclude`           | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots`      |
+| `minShared`         | integer  | 2       | Minimum shared commits for a missing companion              |
+| `minDegree`         | integer  | 50      | Minimum coupling degree (%) for a missing companion         |
+| `maxFilesPerCommit` | integer  | 30      | History commits touching more files are skipped (see below) |
+| `limit`             | integer  | 20      | 1–100, applies to each list separately                      |
+
+Output: `{ repo, base, head, baseCommit, headCommit, windowDays, commits, truncated, changeAuthors, filesChanged, additions, deletions, historyScanned, scanTruncated, files: [{ path, additions, deletions, changes, fixes, lastChanged, owner, ownerShare }], missingCompanions: [{ path, coupledWith, sharedCommits, degree }], reviewers: [{ author, share, filesKnown, lastCommit }] }`
+
+One call that combines `file_hotspots`, `change_coupling` and `knowledge_map` for the files
+changed in `base..head`, read against the history of `base`:
+
+- `files` are the changed files, riskiest first: most fixes on `base`, then most changes. New
+  files have no history, so `changes` is 0 and `owner` is `null`.
+- `missingCompanions` are files that were not changed but usually change together with a changed
+  file (same `degree` as `change_coupling`), such as a test or config that may have been
+  forgotten.
+- `reviewers` are ranked by recent-weighted knowledge of the changed files and leave out the
+  authors of the changes themselves. `share` is relative to everyone's knowledge, change authors
+  included.
+
+The changed files come from the non-merge commits in `base..head`, so a file that was changed and
+later changed back still counts. Commits touching more than `maxFilesPerCommit` files still count
+toward `changes` and `fixes`, but not toward ownership or coupling. Renames are not followed.
+
 ### `stale_branches`
 
 | Input           | Type    | Default | Notes                                    |
@@ -495,7 +528,8 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
-- Renames are not followed in `file_hotspots`, `change_coupling` and `knowledge_map`.
+- Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map` and
+  `review_context`.
 - Each session pays about 2.5k tokens for the tool definitions, and `release_notes_draft`
   returns its content both as sections and as Markdown, so on simple questions a shell can be
   cheaper (see [Benchmark](#benchmark)).

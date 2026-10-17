@@ -9,6 +9,7 @@ import {
   createFixtureRepo,
   createPlainDir,
   createRenameRepo,
+  createReviewRepo,
   NOW,
   type TempRepo,
 } from './fixture.js';
@@ -607,6 +608,78 @@ describe('knowledgeMap', () => {
     await expect(insights.knowledgeMap(repo.path, { ...defaults, path: '../etc' })).rejects.toThrow(
       InputError,
     );
+  });
+});
+
+describe('reviewContext', () => {
+  let reviewRepo: TempRepo;
+  const defaults = {
+    base: 'main',
+    head: 'feature/search',
+    days: 180,
+    halfLifeDays: 90,
+    minShared: 2,
+    minDegree: 50,
+    maxFilesPerCommit: 30,
+    limit: 20,
+  };
+
+  beforeAll(async () => {
+    reviewRepo = await createReviewRepo();
+  });
+
+  afterAll(async () => {
+    await reviewRepo?.cleanup();
+  });
+
+  it('ranks changed files by their history on base', async () => {
+    const result = await insights.reviewContext(reviewRepo.path, defaults);
+    expect(result).toMatchObject({
+      commits: 2,
+      truncated: false,
+      changeAuthors: ['Bob Example'],
+      filesChanged: 3,
+      historyScanned: 6,
+    });
+    expect(result.files.map((f) => [f.path, f.changes, f.fixes, f.owner, f.ownerShare])).toEqual([
+      ['src/api.ts', 3, 2, 'Alice Example', 67],
+      ['src/search.ts', 0, 0, null, null],
+      ['test/search.test.ts', 0, 0, null, null],
+    ]);
+  });
+
+  it('finds files that usually change with the changed files', async () => {
+    const result = await insights.reviewContext(reviewRepo.path, defaults);
+    expect(result.missingCompanions).toEqual([
+      { path: 'test/api.test.ts', coupledWith: 'src/api.ts', sharedCommits: 3, degree: 100 },
+    ]);
+
+    const strict = await insights.reviewContext(reviewRepo.path, { ...defaults, minShared: 4 });
+    expect(strict.missingCompanions).toEqual([]);
+    const noTests = await insights.reviewContext(reviewRepo.path, {
+      ...defaults,
+      exclude: ['test/'],
+    });
+    expect(noTests.missingCompanions).toEqual([]);
+    expect(noTests.filesChanged).toBe(2);
+  });
+
+  it('suggests reviewers other than the change authors', async () => {
+    const result = await insights.reviewContext(reviewRepo.path, defaults);
+    expect(result.reviewers).toEqual([
+      expect.objectContaining({ author: 'Alice Example', share: 67, filesKnown: 1 }),
+    ]);
+  });
+
+  it('handles identical refs and rejects unknown ones', async () => {
+    const same = await insights.reviewContext(reviewRepo.path, { ...defaults, head: 'main' });
+    expect(same).toMatchObject({ commits: 0, filesChanged: 0, files: [], reviewers: [] });
+    await expect(
+      insights.reviewContext(reviewRepo.path, { ...defaults, base: 'nope' }),
+    ).rejects.toThrow(InputError);
+    await expect(
+      insights.reviewContext(reviewRepo.path, { ...defaults, head: '--output=/tmp/x' }),
+    ).rejects.toThrow(InputError);
   });
 });
 
