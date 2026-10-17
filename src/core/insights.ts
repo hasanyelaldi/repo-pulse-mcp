@@ -3,6 +3,7 @@ import {
   BRANCH_FORMAT,
   COMMIT_FORMAT,
   COMMIT_WITH_BODY_FORMAT,
+  COMMIT_WITH_EMAIL_FORMAT,
   parseBranches,
   parseCommits,
   parseCommitsWithBody,
@@ -68,6 +69,20 @@ function validateTypes(types: string[] | undefined): Set<string> | null {
     throw new InputError('Commit types must be 1-20 letters each, e.g. "fix" or "feat".');
   }
   return new Set(normalized);
+}
+
+/**
+ * Display name per person. Commits that share an email address come from one
+ * person, who is shown under the name of their newest commit, so someone who
+ * committed as both "jdoe" and "Jane Doe" is counted once. Commits must be
+ * newest first.
+ */
+function authorNames(commits: readonly Commit[]): (commit: Commit) => string {
+  const names = new Map<string, string>();
+  for (const c of commits) {
+    if (c.authorKey !== undefined && !names.has(c.authorKey)) names.set(c.authorKey, c.author);
+  }
+  return (c) => (c.authorKey === undefined ? c.author : (names.get(c.authorKey) ?? c.author));
 }
 
 function pathspec(path: string | undefined): string[] {
@@ -212,7 +227,7 @@ export class RepoInsights {
     const types = validateTypes(opts.types);
     const out = await this.runGit(repoPath, [
       'log',
-      `--format=${COMMIT_FORMAT}`,
+      `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
       '--numstat',
       '--no-renames',
       '--no-merges',
@@ -224,6 +239,7 @@ export class RepoInsights {
       ...pathspec(opts.path),
     ]);
     const commits = parseCommitsWithNumstat(out);
+    const nameOf = authorNames(commits);
 
     const stats = new Map<
       string,
@@ -259,7 +275,7 @@ export class RepoInsights {
         if (isFix) entry.fixes += 1;
         entry.additions += file.additions ?? 0;
         entry.deletions += file.deletions ?? 0;
-        entry.authors.add(commit.author);
+        entry.authors.add(nameOf(commit));
         stats.set(file.path, entry);
       }
     }
@@ -585,7 +601,7 @@ export class RepoInsights {
     const now = this.now();
     const out = await this.runGit(repoPath, [
       'log',
-      `--format=${COMMIT_FORMAT}`,
+      `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
       '--numstat',
       '--no-renames',
       '--no-merges',
@@ -597,6 +613,7 @@ export class RepoInsights {
       ...(path === null ? [] : ['--', path]),
     ]);
     const commits = parseCommitsWithNumstat(out);
+    const nameOf = authorNames(commits);
 
     const files = new Map<
       string,
@@ -615,14 +632,15 @@ export class RepoInsights {
       const ageDays = Math.max(0, now.getTime() - new Date(commit.date).getTime()) / DAY_MS;
       const weight = 0.5 ** (ageDays / opts.halfLifeDays);
 
-      const author = authors.get(commit.author) ?? {
+      const name = nameOf(commit);
+      const author = authors.get(name) ?? {
         weight: 0,
         commits: 0,
         lastCommit: commit.date,
       };
       author.commits += 1;
       author.weight += weight * paths.length;
-      authors.set(commit.author, author);
+      authors.set(name, author);
 
       for (const p of paths) {
         const file = files.get(p) ?? {
@@ -632,8 +650,8 @@ export class RepoInsights {
           lastChanged: commit.date,
         };
         file.commits += 1;
-        file.authors.add(commit.author);
-        file.weights.set(commit.author, (file.weights.get(commit.author) ?? 0) + weight);
+        file.authors.add(name);
+        file.weights.set(name, (file.weights.get(name) ?? 0) + weight);
         files.set(p, file);
       }
     }
@@ -720,7 +738,7 @@ export class RepoInsights {
     const numstatLog = (...args: string[]) =>
       this.runGit(repoPath, [
         'log',
-        `--format=${COMMIT_FORMAT}`,
+        `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
         '--numstat',
         '--no-renames',
         '--no-merges',
@@ -733,12 +751,14 @@ export class RepoInsights {
       numstatLog(`--max-count=${MAX_COMMITS_SCANNED}`, sinceArg(opts.days, now), baseCommit),
     ]);
     const changes = all.slice(0, MAX_REVIEW_COMMITS);
+    // Branch commits first: they are usually the newest, so their names win.
+    const nameOf = authorNames([...changes, ...history]);
 
     // What the branch changed.
     const changed = new Map<string, { additions: number; deletions: number }>();
     const changeAuthors = new Set<string>();
     for (const commit of changes) {
-      changeAuthors.add(commit.author);
+      changeAuthors.add(nameOf(commit));
       for (const file of commit.files) {
         if (isExcluded(file.path)) continue;
         const entry = changed.get(file.path) ?? { additions: 0, deletions: 0 };
@@ -770,12 +790,13 @@ export class RepoInsights {
 
       const ageDays = Math.max(0, now.getTime() - new Date(commit.date).getTime()) / DAY_MS;
       const weight = 0.5 ** (ageDays / opts.halfLifeDays);
+      const name = nameOf(commit);
       for (const p of touched) {
-        const weights = knowledge.get(commit.author) ?? new Map<string, number>();
+        const weights = knowledge.get(name) ?? new Map<string, number>();
         weights.set(p, (weights.get(p) ?? 0) + weight);
-        knowledge.set(commit.author, weights);
+        knowledge.set(name, weights);
       }
-      if (!authorLastCommit.has(commit.author)) authorLastCommit.set(commit.author, commit.date);
+      if (!authorLastCommit.has(name)) authorLastCommit.set(name, commit.date);
 
       for (const p of paths) {
         revisions.set(p, (revisions.get(p) ?? 0) + 1);
@@ -882,7 +903,7 @@ export class RepoInsights {
   ) {
     const out = await this.runGit(repoPath, [
       'log',
-      `--format=${COMMIT_FORMAT}`,
+      `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
       `--max-count=${MAX_COMMITS_SCANNED}`,
       ...(opts.includeMerges ? [] : ['--no-merges']),
       sinceArg(opts.days, this.now()),
@@ -890,17 +911,19 @@ export class RepoInsights {
       ...pathspec(opts.path),
     ]);
     const commits = parseCommits(out);
+    const nameOf = authorNames(commits);
     const byAuthor = new Map<
       string,
       { commits: number; firstCommit: string; lastCommit: string }
     >();
     for (const c of commits) {
-      const entry = byAuthor.get(c.author);
+      const name = nameOf(c);
+      const entry = byAuthor.get(name);
       if (entry) {
         entry.commits += 1;
         entry.firstCommit = c.date; // newest-first, so later entries are older
       } else {
-        byAuthor.set(c.author, { commits: 1, firstCommit: c.date, lastCommit: c.date });
+        byAuthor.set(name, { commits: 1, firstCommit: c.date, lastCommit: c.date });
       }
     }
     const contributors = [...byAuthor.entries()]

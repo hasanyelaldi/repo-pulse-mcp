@@ -41,6 +41,8 @@ async function commit(
   opts: {
     daysAgo: number;
     by: Person;
+    /** Commit under another name, but with the person's own email. */
+    as?: string;
     subject: string;
     body?: string;
     files: Record<string, string>;
@@ -53,7 +55,7 @@ async function commit(
   }
   git(repo, ['add', '--all']);
   const date = new Date(NOW.getTime() - opts.daysAgo * DAY_MS).toISOString();
-  const person = PEOPLE[opts.by];
+  const person = { ...PEOPLE[opts.by], ...(opts.as === undefined ? {} : { name: opts.as }) };
   const message = opts.body ? `${opts.subject}\n\n${opts.body}` : opts.subject;
   git(repo, ['commit', '--quiet', '--message', message], {
     GIT_AUTHOR_NAME: person.name,
@@ -303,6 +305,35 @@ export async function createReviewRepo(): Promise<TempRepo> {
   await write(2, 'bob', 'test: search', ['test/search.test.ts']);
   git(path, ['checkout', '--quiet', 'main']);
   await write(1, 'alice', 'chore: bump', ['package.json']);
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}
+
+/**
+ * Creates a history in which Alice commits under two names (days before {@link NOW}):
+ *
+ *   10  feat: a                            alice as "Alice Example"   (src/a.ts)
+ *    8  fix: a                             bob                        (src/a.ts)
+ *    5  refactor: a                        alice as "ally"            (src/a.ts)
+ *    1  feat: a again                      alice as "Alice Example"   (src/a.ts)   feature/a
+ */
+export async function createAliasRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-alias-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  const file = (subject: string) => ({ 'src/a.ts': `// ${subject}\n` });
+  await commit(path, { daysAgo: 10, by: 'alice', subject: 'feat: a', files: file('1') });
+  await commit(path, { daysAgo: 8, by: 'bob', subject: 'fix: a', files: file('2') });
+  await commit(path, {
+    daysAgo: 5,
+    by: 'alice',
+    as: 'ally',
+    subject: 'refactor: a',
+    files: file('3'),
+  });
+  git(path, ['checkout', '--quiet', '-b', 'feature/a']);
+  await commit(path, { daysAgo: 1, by: 'alice', subject: 'feat: a again', files: file('4') });
+  git(path, ['checkout', '--quiet', 'main']);
 
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }

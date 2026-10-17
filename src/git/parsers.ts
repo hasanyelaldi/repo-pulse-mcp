@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 // Pure parsers for git output. Nothing in this file spawns processes, which
 // keeps it trivially unit-testable with string fixtures.
 //
@@ -15,6 +17,11 @@ export interface Commit {
   author: string;
   date: string;
   subject: string;
+  /**
+   * Opaque id of the author (a hash of the email), set only for output of
+   * {@link COMMIT_WITH_EMAIL_FORMAT}. Internal: never return it from a tool.
+   */
+  authorKey?: string;
 }
 
 export interface CommitWithBody extends Commit {
@@ -38,8 +45,18 @@ export interface BranchRef {
   lastAuthor: string;
 }
 
-/** `git log` format: hash, author name, author date (ISO 8601 strict), subject. */
-export const COMMIT_FORMAT = `${RECORD_SEP}%H${FIELD_SEP}%an${FIELD_SEP}%aI${FIELD_SEP}%s`;
+/**
+ * `git log` format: hash, author name, author date (ISO 8601 strict), subject.
+ * %aN applies the repository's .mailmap, if any.
+ */
+export const COMMIT_FORMAT = `${RECORD_SEP}%H${FIELD_SEP}%aN${FIELD_SEP}%aI${FIELD_SEP}%s`;
+
+/**
+ * Same as {@link COMMIT_FORMAT} plus the author email, used only to recognize one
+ * person committing under several names. Parsers hash it right away, so it never
+ * reaches tool output.
+ */
+export const COMMIT_WITH_EMAIL_FORMAT = `${COMMIT_FORMAT}${FIELD_SEP}%aE`;
 
 /** Same as {@link COMMIT_FORMAT} plus the raw body, needed for breaking-change footers. */
 export const COMMIT_WITH_BODY_FORMAT = `${COMMIT_FORMAT}${FIELD_SEP}%b`;
@@ -97,11 +114,23 @@ function parseHeader(fields: string[]): Commit | null {
   };
 }
 
-/** Parses output produced with `--format=` {@link COMMIT_FORMAT}. */
+/** Adds {@link Commit.authorKey} when the record has an email field. */
+function withAuthorKey<T extends Commit>(commit: T, email: string | undefined): T {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return commit;
+  const authorKey = createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  return { ...commit, authorKey };
+}
+
+/** Parses output produced with `--format=` {@link COMMIT_FORMAT} or {@link COMMIT_WITH_EMAIL_FORMAT}. */
 export function parseCommits(stdout: string): Commit[] {
-  return splitRecords(stdout)
-    .map((record) => parseHeader(record.trim().split(FIELD_SEP)))
-    .filter((commit): commit is Commit => commit !== null);
+  const commits: Commit[] = [];
+  for (const record of splitRecords(stdout)) {
+    const fields = record.trim().split(FIELD_SEP);
+    const header = parseHeader(fields);
+    if (header) commits.push(withAuthorKey(header, fields[4]));
+  }
+  return commits;
 }
 
 /** Parses output produced with `--format=` {@link COMMIT_WITH_BODY_FORMAT}. */
@@ -124,13 +153,18 @@ function parseCount(value: string | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-/** Parses output produced with `--format=` {@link COMMIT_FORMAT} `--numstat`. */
+/**
+ * Parses output produced with `--format=` {@link COMMIT_FORMAT} or
+ * {@link COMMIT_WITH_EMAIL_FORMAT}, plus `--numstat`.
+ */
 export function parseCommitsWithNumstat(stdout: string): CommitWithFiles[] {
   const commits: CommitWithFiles[] = [];
   for (const record of splitRecords(stdout)) {
     const [headerLine = '', ...statLines] = record.trim().split('\n');
-    const header = parseHeader(headerLine.split(FIELD_SEP));
-    if (!header) continue;
+    const headerFields = headerLine.split(FIELD_SEP);
+    const parsed = parseHeader(headerFields);
+    if (!parsed) continue;
+    const header = withAuthorKey(parsed, headerFields[4]);
 
     const files: FileChange[] = [];
     for (const line of statLines) {
