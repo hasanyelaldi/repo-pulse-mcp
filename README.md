@@ -23,6 +23,40 @@ of scope.
      using release_notes_draft. Save as docs/demo.gif and uncomment the line below. -->
 <!-- ![Demo](docs/demo.gif) -->
 
+## Why repo-pulse?
+
+There are already MCP servers for GitHub, GitLab and git itself, and coding agents with a shell
+can run `git log` directly. repo-pulse does not try to replace them. It does a different job: it
+**turns local git history into answers** and is **safe to auto-approve**.
+
+|                                  | repo-pulse                   | GitHub / GitLab MCP        | Generic git MCP / shell |
+| -------------------------------- | ---------------------------- | -------------------------- | ----------------------- |
+| Returns                          | Aggregated insights          | Platform API objects       | Raw git output          |
+| Can modify anything              | No, enforced by an allowlist | Usually yes (token scopes) | Yes                     |
+| Needs a token or network         | No                           | Yes                        | No                      |
+| Sees local and unpushed branches | Yes                          | No                         | Yes                     |
+| Works without a hosting platform | Yes                          | No                         | Yes                     |
+| Sees pull requests, issues, CI   | No                           | Yes                        | No                      |
+
+What that means in practice:
+
+- **One call instead of a pile of output.** Questions like "where is the churn?", "what goes into
+  the release notes?" or "which branches are merged and stale?" need hundreds or thousands of
+  lines of `git log --numstat` and careful counting. repo-pulse does the counting in code and
+  returns small, deterministic JSON, which saves context and avoids arithmetic mistakes.
+- **Read-only you can verify.** Every tool is annotated `readOnlyHint` and backed by a git
+  subcommand allowlist (see [Security model](#security-model)), so a client can run it without
+  asking for approval each time. You would not give the same permission to a shell or to a git
+  server that can commit and push.
+- **Useful where there is no shell.** Chat clients such as Claude Desktop cannot run `git`. With
+  repo-pulse, an engineering manager or tech lead can ask about a repository directly.
+- **Works with anything git can open.** It works offline and in air-gapped environments, on
+  self-hosted or remote-less repositories, and it never returns author email addresses.
+
+**Use it alongside a platform server, not instead of one.** Pair it with the GitHub or GitLab MCP
+when you also need pull requests, issues or CI status. If you work in a coding agent that already
+has a shell and you only need the occasional `git log`, you probably do not need repo-pulse.
+
 ## Features
 
 | Kind     | Name                        | What it does                                                            |
