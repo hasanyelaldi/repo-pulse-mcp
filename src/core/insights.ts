@@ -20,7 +20,12 @@ import {
   validateSearchQuery,
 } from '../git/validation.js';
 import { compileExcludes } from './glob.js';
-import { groupCommits, renderMarkdown, type ReleaseNoteSection } from './release-notes.js';
+import {
+  groupCommits,
+  parseConventionalCommit,
+  renderMarkdown,
+  type ReleaseNoteSection,
+} from './release-notes.js';
 
 // Hard caps that apply regardless of what the client asks for. They keep a
 // single call cheap even on very large repositories.
@@ -40,6 +45,28 @@ export interface InsightsDeps {
 
 function sinceArg(days: number, now: Date): string {
   return `--since=${new Date(now.getTime() - days * DAY_MS).toISOString()}`;
+}
+
+// Fallback for commits without a conventional-commit header. Word boundaries
+// keep "prefix" and "debug" from matching.
+const FIX_KEYWORDS = /\b(?:fix(?:es|ed)?|bug(?:fix)?|hotfix)\b/i;
+
+/** Conventional-commit type of a subject, or "fix" by keyword when it has none. */
+function commitType(subject: string): { type: string | null; byKeyword: boolean } {
+  const { type } = parseConventionalCommit(subject);
+  if (type !== null) return { type, byKeyword: false };
+  return FIX_KEYWORDS.test(subject)
+    ? { type: 'fix', byKeyword: true }
+    : { type: null, byKeyword: false };
+}
+
+function validateTypes(types: string[] | undefined): Set<string> | null {
+  if (types === undefined) return null;
+  const normalized = types.map((t) => t.trim().toLowerCase());
+  if (normalized.length === 0 || normalized.some((t) => !/^[a-z]{1,20}$/.test(t))) {
+    throw new InputError('Commit types must be 1-20 letters each, e.g. "fix" or "feat".');
+  }
+  return new Set(normalized);
 }
 
 function pathspec(path: string | undefined): string[] {
@@ -178,9 +205,10 @@ export class RepoInsights {
 
   async fileHotspots(
     repoPath: string,
-    opts: { days: number; limit: number; path?: string; exclude?: string[] },
+    opts: { days: number; limit: number; path?: string; exclude?: string[]; types?: string[] },
   ) {
     const isExcluded = compileExcludes(opts.exclude);
+    const types = validateTypes(opts.types);
     const out = await this.runGit(repoPath, [
       'log',
       `--format=${COMMIT_FORMAT}`,
@@ -200,24 +228,34 @@ export class RepoInsights {
       string,
       {
         changes: number;
+        fixes: number;
         additions: number;
         deletions: number;
         authors: Set<string>;
         lastChanged: string;
       }
     >();
+    let commitsMatched = 0;
+    let fixesFromKeywords = 0;
     // git log is newest-first, so the first time we see a file is its latest change.
     for (const commit of commits) {
+      const { type, byKeyword } = commitType(commit.subject);
+      if (types !== null && (type === null || !types.has(type))) continue;
+      commitsMatched += 1;
+      const isFix = type === 'fix';
+      if (isFix && byKeyword) fixesFromKeywords += 1;
       for (const file of commit.files) {
         if (isExcluded(file.path)) continue;
         const entry = stats.get(file.path) ?? {
           changes: 0,
+          fixes: 0,
           additions: 0,
           deletions: 0,
           authors: new Set<string>(),
           lastChanged: commit.date,
         };
         entry.changes += 1;
+        if (isFix) entry.fixes += 1;
         entry.additions += file.additions ?? 0;
         entry.deletions += file.deletions ?? 0;
         entry.authors.add(commit.author);
@@ -229,6 +267,7 @@ export class RepoInsights {
       .map(([path, s]) => ({
         path,
         changes: s.changes,
+        fixes: s.fixes,
         additions: s.additions,
         deletions: s.deletions,
         authors: s.authors.size,
@@ -243,8 +282,11 @@ export class RepoInsights {
 
     return {
       windowDays: opts.days,
+      types: types === null ? null : [...types],
       commitsScanned: commits.length,
       scanTruncated: commits.length >= MAX_COMMITS_SCANNED,
+      commitsMatched,
+      fixesFromKeywords,
       filesChanged: hotspots.length,
       hotspots: hotspots.slice(0, opts.limit),
     };
