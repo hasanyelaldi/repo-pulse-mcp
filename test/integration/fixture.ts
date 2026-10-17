@@ -235,3 +235,35 @@ export async function createCouplingRepo(): Promise<TempRepo> {
 
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
+
+/**
+ * Creates a history of fixes, with and without conventional-commit headers (days before {@link NOW}):
+ *
+ *   5  feat(db): add pool                  alice   (src/db.ts)
+ *   4  Fix crash when pool is empty        bob     (src/db.ts)              fix by keyword
+ *   3  fix(api): reject bad ids            carol   (src/api.ts, src/db.ts)
+ *   2  Prefix log lines with request id    alice   (src/log.ts)             not a fix
+ *   1  docs: fix typo in readme            bob     (README.md)              type wins: docs
+ */
+export async function createFixRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-fix-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  const history: [number, Person, string, string[]][] = [
+    [5, 'alice', 'feat(db): add pool', ['src/db.ts']],
+    [4, 'bob', 'Fix crash when pool is empty', ['src/db.ts']],
+    [3, 'carol', 'fix(api): reject bad ids', ['src/api.ts', 'src/db.ts']],
+    [2, 'alice', 'Prefix log lines with request id', ['src/log.ts']],
+    [1, 'bob', 'docs: fix typo in readme', ['README.md']],
+  ];
+  for (const [daysAgo, by, subject, files] of history) {
+    await commit(path, {
+      daysAgo,
+      by,
+      subject,
+      files: Object.fromEntries(files.map((f) => [f, `// ${subject}\n`])),
+    });
+  }
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}

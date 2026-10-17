@@ -96,7 +96,7 @@ no shell at all.
 | Tool     | `recent_activity`           | Commits from the last N days, filterable by author and path             |
 | Tool     | `commit_search`             | Search commit messages for text, optionally by window, author and path  |
 | Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
-| Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
+| Tool     | `file_hotspots`             | Files ranked by how often they changed, with fix counts and type filter |
 | Tool     | `change_coupling`           | File pairs that keep changing in the same commits (hidden dependencies) |
 | Tool     | `list_tags`                 | Tags newest first, latest release on HEAD and unreleased commit count   |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
@@ -251,12 +251,21 @@ Renames are followed, so older commits report the path the file had at the time 
 | `days`    | integer  | 90      | 1–3650                                                                                           |
 | `path`    | string   | –       | Restrict to a subtree                                                                            |
 | `exclude` | string[] | –       | Up to 20 globs to skip, e.g. `["*.lock", "dist/"]`. No `/` = any depth, trailing `/` = directory |
+| `types`   | string[] | –       | Only count these conventional-commit types, e.g. `["fix"]`                                       |
 | `limit`   | integer  | 10      | 1–100                                                                                            |
 
-Output: `{ repo, windowDays, commitsScanned, scanTruncated, filesChanged, hotspots: [{ path, changes, additions, deletions, authors, lastChanged }] }`
+Output: `{ repo, windowDays, types, commitsScanned, scanTruncated, commitsMatched, fixesFromKeywords, filesChanged, hotspots: [{ path, changes, fixes, additions, deletions, authors, lastChanged }] }`
 
 Merge commits are excluded and renames are not followed, so a renamed file starts fresh. Use
 `file_history` to trace a single file across renames.
+
+`fixes` counts the commits among `changes` that were bug fixes: a file that changes often and
+mostly through fixes is a better refactoring candidate than one that just grows. With
+`types: ["fix"]` only fixes are counted, so the ranking shows the files that keep breaking.
+Commit types come from conventional-commit headers (`fix(api): …`). A commit without one counts
+as a fix when its subject mentions "fix", "bug" or "hotfix"; `fixesFromKeywords` says how many
+fixes were found that way, so a non-zero value means the counts are an estimate. A header always
+wins, so `docs: fix typo` is not a fix.
 
 ### `change_coupling`
 
