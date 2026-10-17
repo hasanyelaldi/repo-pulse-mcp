@@ -114,6 +114,27 @@ const fileHotspotsOutput = z.object({
   ),
 });
 
+const changeCouplingOutput = z.object({
+  repo: repoOutputField,
+  windowDays: z.number(),
+  commitsScanned: z.number(),
+  scanTruncated: z.boolean(),
+  commitsSkipped: z.number().describe('Commits ignored for touching more than maxFilesPerCommit.'),
+  pairCount: z.number().describe('All pairs with at least minShared shared commits.'),
+  pairs: z.array(
+    z.object({
+      fileA: z.string(),
+      fileB: z.string(),
+      sharedCommits: z.number().describe('Commits that changed both files.'),
+      revisionsA: z.number().describe('Commits that changed fileA.'),
+      revisionsB: z.number().describe('Commits that changed fileB.'),
+      degree: z
+        .number()
+        .describe('Shared commits as a percentage of the average revisions of the two files.'),
+    }),
+  ),
+});
+
 const releaseNotesOutput = z.object({
   repo: repoOutputField,
   from: z.string().nullable().describe('Start ref (exclusive); null means from the first commit.'),
@@ -331,6 +352,54 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.fileHotspots(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'change_coupling',
+    {
+      title: 'Change coupling',
+      description:
+        'Find pairs of files that are often changed in the same commits in the last N days ' +
+        '(merge commits excluded), most shared commits first. Reveals hidden dependencies that ' +
+        'imports do not show, e.g. code and the config or test it always drags along. Pass ' +
+        '"file" to see what usually changes together with one file.',
+      inputSchema: z.object({
+        repo: repoField,
+        days: daysField(90),
+        file: z
+          .string()
+          .max(500)
+          .optional()
+          .describe('Only pairs that include this repository-relative file.'),
+        path: z.string().max(500).optional().describe('Restrict to this file or directory.'),
+        exclude: z
+          .array(z.string().min(1).max(200))
+          .max(20)
+          .optional()
+          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+        minShared: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .default(2)
+          .describe('Minimum number of shared commits for a pair to be listed.'),
+        maxFilesPerCommit: z
+          .number()
+          .int()
+          .min(2)
+          .max(500)
+          .default(30)
+          .describe('Skip commits touching more files than this (bulk renames, formatting).'),
+        limit: limitField(10, 100),
+      }),
+      outputSchema: changeCouplingOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.changeCoupling(r.path, opts)) });
     },
   );
 

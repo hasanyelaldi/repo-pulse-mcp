@@ -196,3 +196,42 @@ export async function createRenameRepo(): Promise<TempRepo> {
 
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
+
+/**
+ * Creates a history with files that change together (days before {@link NOW}):
+ *
+ *   9  feat: users api                     alice   (src/api.ts, test/api.test.ts, docs/api.md)
+ *   7  fix: users api validation           bob     (src/api.ts, test/api.test.ts)
+ *   5  feat: persist users                 carol   (src/api.ts, src/db.ts)
+ *   4  fix: api paging                     alice   (src/api.ts, test/api.test.ts, package-lock.json)
+ *   3  style: format everything            bob     (src/api.ts, test/api.test.ts, docs/api.md, src/db.ts)
+ *   2  perf: db index                      carol   (src/db.ts)
+ */
+export async function createCouplingRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-coupling-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  const history: [number, Person, string, string[]][] = [
+    [9, 'alice', 'feat: users api', ['src/api.ts', 'test/api.test.ts', 'docs/api.md']],
+    [7, 'bob', 'fix: users api validation', ['src/api.ts', 'test/api.test.ts']],
+    [5, 'carol', 'feat: persist users', ['src/api.ts', 'src/db.ts']],
+    [4, 'alice', 'fix: api paging', ['src/api.ts', 'test/api.test.ts', 'package-lock.json']],
+    [
+      3,
+      'bob',
+      'style: format everything',
+      ['src/api.ts', 'test/api.test.ts', 'docs/api.md', 'src/db.ts'],
+    ],
+    [2, 'carol', 'perf: db index', ['src/db.ts']],
+  ];
+  for (const [daysAgo, by, subject, files] of history) {
+    await commit(path, {
+      daysAgo,
+      by,
+      subject,
+      files: Object.fromEntries(files.map((f) => [f, `// ${subject}\n`])),
+    });
+  }
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}

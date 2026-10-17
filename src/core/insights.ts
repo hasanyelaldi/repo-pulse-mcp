@@ -245,6 +245,95 @@ export class RepoInsights {
     };
   }
 
+  /**
+   * Pairs of files that tend to change in the same commits. Large commits
+   * (bulk renames, formatting) are skipped because they couple everything.
+   */
+  async changeCoupling(
+    repoPath: string,
+    opts: {
+      days: number;
+      limit: number;
+      minShared: number;
+      maxFilesPerCommit: number;
+      file?: string;
+      path?: string;
+      exclude?: string[];
+    },
+  ) {
+    const isExcluded = compileExcludes(opts.exclude);
+    const file = opts.file === undefined ? undefined : validateRepoPath(opts.file);
+    const out = await this.runGit(repoPath, [
+      'log',
+      `--format=${COMMIT_FORMAT}`,
+      '--numstat',
+      '--no-renames',
+      '--no-merges',
+      '--no-ext-diff',
+      '--no-textconv',
+      `--max-count=${MAX_COMMITS_SCANNED}`,
+      sinceArg(opts.days, this.now()),
+      'HEAD',
+      ...pathspec(opts.path),
+    ]);
+    const commits = parseCommitsWithNumstat(out);
+
+    const revisions = new Map<string, number>();
+    const shared = new Map<string, number>();
+    let commitsSkipped = 0;
+    for (const commit of commits) {
+      const files = [...new Set(commit.files.map((f) => f.path))]
+        .filter((p) => !isExcluded(p))
+        .sort();
+      if (files.length > opts.maxFilesPerCommit) {
+        commitsSkipped += 1;
+        continue;
+      }
+      for (const [i, a] of files.entries()) {
+        revisions.set(a, (revisions.get(a) ?? 0) + 1);
+        for (const b of files.slice(i + 1)) {
+          if (file !== undefined && a !== file && b !== file) continue;
+          // NUL cannot appear in a path, so it is a safe key separator.
+          const key = `${a}\0${b}`;
+          shared.set(key, (shared.get(key) ?? 0) + 1);
+        }
+      }
+    }
+
+    const pairs = [...shared.entries()]
+      .filter(([, count]) => count >= opts.minShared)
+      .map(([key, sharedCommits]) => {
+        const [fileA = '', fileB = ''] = key.split('\0');
+        const revisionsA = revisions.get(fileA) ?? 0;
+        const revisionsB = revisions.get(fileB) ?? 0;
+        return {
+          fileA,
+          fileB,
+          sharedCommits,
+          revisionsA,
+          revisionsB,
+          // Shared commits relative to the average number of revisions, as a percentage.
+          degree: Math.round((sharedCommits / ((revisionsA + revisionsB) / 2)) * 100),
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.sharedCommits - a.sharedCommits ||
+          b.degree - a.degree ||
+          a.fileA.localeCompare(b.fileA) ||
+          a.fileB.localeCompare(b.fileB),
+      );
+
+    return {
+      windowDays: opts.days,
+      commitsScanned: commits.length,
+      scanTruncated: commits.length >= MAX_COMMITS_SCANNED,
+      commitsSkipped,
+      pairCount: pairs.length,
+      pairs: pairs.slice(0, opts.limit),
+    };
+  }
+
   /** Latest tag reachable from `commit`, ignoring a tag that points at `commit` itself. */
   private async previousTag(repoPath: string, commit: string): Promise<string | null> {
     const describe = async (rev: string) => {

@@ -31,6 +31,7 @@ of scope.
 | Tool     | `commit_search`             | Search commit messages for text, optionally by window, author and path  |
 | Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
 | Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
+| Tool     | `change_coupling`           | File pairs that keep changing in the same commits (hidden dependencies) |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
@@ -185,6 +186,27 @@ Output: `{ repo, windowDays, commitsScanned, scanTruncated, filesChanged, hotspo
 
 Merge commits are excluded and renames are not followed, so a renamed file starts fresh. Use
 `file_history` to trace a single file across renames.
+
+### `change_coupling`
+
+| Input               | Type     | Default | Notes                                                  |
+| ------------------- | -------- | ------- | ------------------------------------------------------ |
+| `days`              | integer  | 90      | 1–3650                                                 |
+| `file`              | string   | –       | Only pairs that include this file                      |
+| `path`              | string   | –       | Restrict to a subtree                                  |
+| `exclude`           | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots` |
+| `minShared`         | integer  | 2       | Minimum shared commits for a pair to be listed         |
+| `maxFilesPerCommit` | integer  | 30      | Commits touching more files are skipped                |
+| `limit`             | integer  | 10      | 1–100                                                  |
+
+Output: `{ repo, windowDays, commitsScanned, scanTruncated, commitsSkipped, pairCount, pairs: [{ fileA, fileB, sharedCommits, revisionsA, revisionsB, degree }] }`
+
+`degree` is the number of shared commits as a percentage of the average number of commits that
+touched each file: 100 means the two files always change together. A high degree between files
+that do not import each other usually points to a hidden dependency (duplicated logic, a config
+or fixture that must be kept in sync). Large commits such as bulk renames or formatting runs are
+skipped because they would couple every file they touch. Merge commits are excluded and renames
+are not followed.
 
 ### `release_notes_draft`
 
