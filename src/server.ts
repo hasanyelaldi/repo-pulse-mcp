@@ -211,6 +211,47 @@ const staleBranchesOutput = z.object({
   ),
 });
 
+const knowledgeMapOutput = z.object({
+  repo: repoOutputField,
+  path: z
+    .string()
+    .nullable()
+    .describe('The requested file or directory, or null for the whole repo.'),
+  windowDays: z.number(),
+  halfLifeDays: z.number(),
+  commitsScanned: z.number(),
+  scanTruncated: z.boolean(),
+  commitsSkipped: z.number().describe('Commits ignored for touching more than maxFilesPerCommit.'),
+  filesAnalyzed: z.number(),
+  busFactor: z
+    .number()
+    .describe('Fewest authors who together hold more than half of the knowledge.'),
+  concentratedFiles: z
+    .number()
+    .describe('Files where a single author holds at least 80% of the knowledge.'),
+  authors: z.array(
+    z.object({
+      author: z.string(),
+      share: z.number().describe('Percentage of all recency-weighted knowledge in the area.'),
+      filesOwned: z.number().describe('Files where this author holds the largest share.'),
+      commits: z.number(),
+      lastCommit: z.string(),
+    }),
+  ),
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        owner: z.string().describe('Author with the largest recency-weighted share.'),
+        ownerShare: z.number().describe('Owner share of this file, as a percentage.'),
+        authors: z.number(),
+        commits: z.number(),
+        lastChanged: z.string(),
+      }),
+    )
+    .describe('Most frequently changed files first.'),
+});
+
 const contributorSummaryOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
@@ -521,6 +562,49 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.staleBranches(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'knowledge_map',
+    {
+      title: 'Knowledge map',
+      description:
+        "Who knows a file or directory: each author's share of the knowledge, from the commits " +
+        'they made in the last N days (merge commits excluded), with recent commits weighted ' +
+        'more. Also returns the bus factor and how many files depend on a single person. ' +
+        'Useful for "who should review this?" and "who knows the auth module best?".',
+      inputSchema: z.object({
+        repo: repoField,
+        path: z.string().max(500).optional().describe('Restrict to this file or directory.'),
+        days: daysField(365),
+        halfLifeDays: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .default(90)
+          .describe('A commit counts half as much for every this many days of age.'),
+        exclude: z
+          .array(z.string().min(1).max(200))
+          .max(20)
+          .optional()
+          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+        maxFilesPerCommit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .default(30)
+          .describe('Skip commits touching more files than this (bulk renames, formatting).'),
+        limit: limitField(10, 100),
+      }),
+      outputSchema: knowledgeMapOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.knowledgeMap(r.path, opts)) });
     },
   );
 

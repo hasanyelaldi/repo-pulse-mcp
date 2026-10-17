@@ -29,6 +29,9 @@ export const MAX_RELEASE_COMMITS = 500;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** A file counts as depending on one person when that person holds at least this share. */
+export const CONCENTRATED_SHARE = 80;
+
 export interface InsightsDeps {
   runGit: GitRunner;
   /** Injectable clock so time-window logic is deterministic in tests. */
@@ -514,6 +517,135 @@ export class RepoInsights {
       totalBranches: branches.length,
       staleCount: stale.length,
       branches: stale.slice(0, opts.limit),
+    };
+  }
+
+  /**
+   * Who knows a file or directory: each commit that touches a file gives its
+   * author knowledge of that file, halved every halfLifeDays so recent work
+   * counts more. Line counts are ignored so generated or reformatted diffs do
+   * not dominate.
+   */
+  async knowledgeMap(
+    repoPath: string,
+    opts: {
+      days: number;
+      halfLifeDays: number;
+      limit: number;
+      maxFilesPerCommit: number;
+      path?: string;
+      exclude?: string[];
+    },
+  ) {
+    const isExcluded = compileExcludes(opts.exclude);
+    const path = opts.path === undefined ? null : validateRepoPath(opts.path);
+    const now = this.now();
+    const out = await this.runGit(repoPath, [
+      'log',
+      `--format=${COMMIT_FORMAT}`,
+      '--numstat',
+      '--no-renames',
+      '--no-merges',
+      '--no-ext-diff',
+      '--no-textconv',
+      `--max-count=${MAX_COMMITS_SCANNED}`,
+      sinceArg(opts.days, now),
+      'HEAD',
+      ...(path === null ? [] : ['--', path]),
+    ]);
+    const commits = parseCommitsWithNumstat(out);
+
+    const files = new Map<
+      string,
+      { weights: Map<string, number>; authors: Set<string>; commits: number; lastChanged: string }
+    >();
+    const authors = new Map<string, { weight: number; commits: number; lastCommit: string }>();
+    let commitsSkipped = 0;
+    // git log is newest-first, so the first time we see a file or author is its latest commit.
+    for (const commit of commits) {
+      const paths = [...new Set(commit.files.map((f) => f.path))].filter((p) => !isExcluded(p));
+      if (paths.length === 0) continue;
+      if (paths.length > opts.maxFilesPerCommit) {
+        commitsSkipped += 1;
+        continue;
+      }
+      const ageDays = Math.max(0, now.getTime() - new Date(commit.date).getTime()) / DAY_MS;
+      const weight = 0.5 ** (ageDays / opts.halfLifeDays);
+
+      const author = authors.get(commit.author) ?? {
+        weight: 0,
+        commits: 0,
+        lastCommit: commit.date,
+      };
+      author.commits += 1;
+      author.weight += weight * paths.length;
+      authors.set(commit.author, author);
+
+      for (const p of paths) {
+        const file = files.get(p) ?? {
+          weights: new Map<string, number>(),
+          authors: new Set<string>(),
+          commits: 0,
+          lastChanged: commit.date,
+        };
+        file.commits += 1;
+        file.authors.add(commit.author);
+        file.weights.set(commit.author, (file.weights.get(commit.author) ?? 0) + weight);
+        files.set(p, file);
+      }
+    }
+
+    const ownedFiles = new Map<string, number>();
+    const fileList = [...files.entries()].map(([filePath, f]) => {
+      const [owner = '', ownerWeight = 0] =
+        [...f.weights.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ?? [];
+      const total = [...f.weights.values()].reduce((sum, w) => sum + w, 0);
+      ownedFiles.set(owner, (ownedFiles.get(owner) ?? 0) + 1);
+      return {
+        path: filePath,
+        owner,
+        ownerShare: Math.round((ownerWeight / total) * 100),
+        authors: f.authors.size,
+        commits: f.commits,
+        lastChanged: f.lastChanged,
+      };
+    });
+    fileList.sort(
+      (a, b) =>
+        b.commits - a.commits || b.ownerShare - a.ownerShare || a.path.localeCompare(b.path),
+    );
+
+    const totalWeight = [...authors.values()].reduce((sum, a) => sum + a.weight, 0);
+    const ranked = [...authors.entries()].sort(
+      (a, b) => b[1].weight - a[1].weight || a[0].localeCompare(b[0]),
+    );
+    // Fewest authors who together hold more than half of the knowledge.
+    let busFactor = 0;
+    let covered = 0;
+    for (const [, a] of ranked) {
+      if (covered > totalWeight / 2) break;
+      covered += a.weight;
+      busFactor += 1;
+    }
+
+    return {
+      path,
+      windowDays: opts.days,
+      halfLifeDays: opts.halfLifeDays,
+      commitsScanned: commits.length,
+      scanTruncated: commits.length >= MAX_COMMITS_SCANNED,
+      commitsSkipped,
+      filesAnalyzed: fileList.length,
+      busFactor,
+      concentratedFiles: fileList.filter((f) => f.ownerShare >= CONCENTRATED_SHARE).length,
+      authors: ranked.slice(0, opts.limit).map(([author, a]) => ({
+        author,
+        share: Math.round((a.weight / totalWeight) * 100),
+        filesOwned: ownedFiles.get(author) ?? 0,
+        commits: a.commits,
+        lastCommit: a.lastCommit,
+      })),
+      files: fileList.slice(0, opts.limit),
     };
   }
 
