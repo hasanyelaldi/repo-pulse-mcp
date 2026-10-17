@@ -24,9 +24,10 @@ It works with any local git repository, whether it was cloned from GitHub, GitLa
 anywhere else, or has no remote at all. Platform data such as pull requests, issues or CI status
 is out of scope.
 
-![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](https://raw.githubusercontent.com/hasanyelaldi/repo-pulse-mcp/main/docs/demo.gif)
+![Claude Code using repo-pulse to review a vitejs/vite branch: risky files, missing companions and reviewers](https://raw.githubusercontent.com/hasanyelaldi/repo-pulse-mcp/main/docs/demo-review.gif)
 
-_A real Claude Code session on [vitejs/vite](https://github.com/vitejs/vite). See [how it was recorded](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/bench/README.md#demo-gif)._
+_A real Claude Code session reviewing a branch of [vitejs/vite](https://github.com/vitejs/vite) with
+no shell, only repo-pulse. See [how it was recorded](https://github.com/hasanyelaldi/repo-pulse-mcp/blob/main/bench/README.md#demo-gifs)._
 
 ## Quick start
 
@@ -128,6 +129,10 @@ All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and ret
 > **Highlights** — …
 
 _The conversations are illustrative: names and numbers are made up._
+
+And a real session on vite, asking about unreleased changes and stale branches:
+
+![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](https://raw.githubusercontent.com/hasanyelaldi/repo-pulse-mcp/main/docs/demo.gif)
 
 ## Why repo-pulse?
 
