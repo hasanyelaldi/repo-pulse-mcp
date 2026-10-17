@@ -1,0 +1,4 @@
+hotspots	vite	Which 10 files changed the most in the last 90 days, and roughly how many people worked on each? Answer with a short table.
+coupling	vite	Over the last 365 days, which files most often change in the same commits as packages/vite/src/node/config.ts? List the top 5 with how often they changed together.
+release	express	Draft release notes for the latest tag compared to the previous tag, grouped by type (features, fixes, etc.).
+stale	vite	Which remote branches have had no commits for at least 90 days and are already merged into the main branch? Give the count and list up to 10.

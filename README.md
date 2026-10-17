@@ -20,9 +20,9 @@ GitLab, Bitbucket or anywhere else, or has no remote at all. It only reads local
 never contacts a hosting service, so platform data such as pull requests, issues or CI status is out
 of scope.
 
-<!-- SCREENSHOT / GIF: Claude Desktop answering "What changed since the last release?"
-     using release_notes_draft. Save as docs/demo.gif and uncomment the line below. -->
-<!-- ![Demo](docs/demo.gif) -->
+![Claude Code using repo-pulse to summarize unreleased changes and stale branches in vitejs/vite](docs/demo.gif)
+
+_A real Claude Code session on [vitejs/vite](https://github.com/vitejs/vite). See [how it was recorded](bench/README.md#demo-gif)._
 
 ## Why repo-pulse?
 
@@ -41,10 +41,10 @@ can run `git log` directly. repo-pulse does not try to replace them. It does a d
 
 What that means in practice:
 
-- **One call instead of a pile of output.** Questions like "where is the churn?", "what goes into
-  the release notes?" or "which branches are merged and stale?" need hundreds or thousands of
-  lines of `git log --numstat` and careful counting. repo-pulse does the counting in code and
-  returns small, deterministic JSON, which saves context and avoids arithmetic mistakes.
+- **Fewer steps, correct numbers.** Questions like "where is the churn?", "what goes into the
+  release notes?" or "which branches are merged and stale?" otherwise take several shell commands
+  and hand-written counting pipelines, which can be silently wrong. repo-pulse does the counting
+  in tested code and returns deterministic JSON that says which filters it applied.
 - **Read-only you can verify.** Every tool is annotated `readOnlyHint` and backed by a git
   subcommand allowlist (see [Security model](#security-model)), so a client can run it without
   asking for approval each time. You would not give the same permission to a shell or to a git
@@ -58,6 +58,24 @@ What that means in practice:
 when you also need pull requests, issues or CI status. If you work in a coding agent that already
 has a shell and you only need the occasional `git log`, you probably do not need repo-pulse.
 
+## Benchmark
+
+Claude Code (Sonnet 5.5) answered the same four questions about vite and express twice: once with
+only a read-only shell and once with only repo-pulse. Full method, answers and caveats are in
+[bench/README.md](bench/README.md).
+
+| Question                          | Shell: turns · time · result | repo-pulse: turns · time · result |
+| --------------------------------- | ---------------------------- | --------------------------------- |
+| Top 10 hotspots, last 90 days     | 2 · 6.6 s · ✅               | 2 · 6.5 s · ✅                    |
+| Files coupled to `config.ts`      | 2 · 7.4 s · ❌ undercounted  | 2 · 8.6 s · ✅                    |
+| Release notes, latest vs previous | 3 · 14.0 s · ✅              | 3 · 12.5 s · ✅                   |
+| Merged branches stale for 90 days | 5 · 15.9 s · ✅              | 2 · 4.3 s · ✅                    |
+
+The honest summary: repo-pulse is not cheaper in tokens for simple one-off questions, because a
+good model writes compact shell pipelines and repo-pulse's tool definitions cost about 2.5k
+tokens. It wins on multi-step questions, on getting the numbers right, and in clients that have
+no shell at all.
+
 ## Features
 
 | Kind     | Name                        | What it does                                                            |
@@ -67,6 +85,7 @@ has a shell and you only need the occasional `git log`, you probably do not need
 | Tool     | `file_history`              | One file's commits with line stats, following it across renames         |
 | Tool     | `file_hotspots`             | Files ranked by how often they changed in a time window                 |
 | Tool     | `change_coupling`           | File pairs that keep changing in the same commits (hidden dependencies) |
+| Tool     | `list_tags`                 | Tags newest first, latest release on HEAD and unreleased commit count   |
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
@@ -245,6 +264,18 @@ that do not import each other usually points to a hidden dependency (duplicated 
 or fixture that must be kept in sync). Large commits such as bulk renames or formatting runs are
 skipped because they would couple every file they touch. Merge commits are excluded and renames
 are not followed.
+
+### `list_tags`
+
+| Input   | Type    | Default | Notes |
+| ------- | ------- | ------- | ----- |
+| `limit` | integer | 20      | 1–200 |
+
+Output: `{ repo, totalTags, latestOnHead, commitsSinceLatest, tags: [{ name, date, shortHash, subject }] }`
+
+Tags are sorted by tag date, newest first. `latestOnHead` is the latest tag reachable from `HEAD`,
+which can differ from the newest tag when maintenance releases are tagged on other branches.
+`commitsSinceLatest` counts the commits after it, i.e. unreleased work.
 
 ### `release_notes_draft`
 
