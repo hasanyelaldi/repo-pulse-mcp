@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.hasanyelaldi/repo-pulse-mcp",
+  "title": "repo-pulse",
+  "description": "Read-only git insights for AI assistants: hotspots, change coupling, release notes, stale branches",
+  "repository": {
+    "url": "https://github.com/hasanyelaldi/repo-pulse-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "repo-pulse-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "REPO_PULSE_REPOS",
+          "description": "Absolute paths of the git repositories to serve, separated by ':' (';' on Windows)",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
