@@ -477,6 +477,87 @@ describe('changeCoupling', () => {
   });
 });
 
+describe('knowledgeMap', () => {
+  const defaults = { days: 30, halfLifeDays: 90, limit: 10, maxFilesPerCommit: 30 };
+  const shares = (authors: { author: string; share: number }[]) =>
+    authors.map((a) => [a.author, a.share]);
+
+  it('weights knowledge per author and reports the bus factor', async () => {
+    const result = await insights.knowledgeMap(repo.path, defaults);
+    expect(result).toMatchObject({
+      path: null,
+      commitsScanned: 6,
+      commitsSkipped: 0,
+      filesAnalyzed: 5,
+      busFactor: 1,
+      concentratedFiles: 4,
+    });
+    expect(shares(result.authors)).toEqual([
+      ['Alice Example', 57],
+      ['Bob Example', 29],
+      ['Carol Example', 15],
+    ]);
+    expect(result.authors[0]).toMatchObject({ filesOwned: 3, commits: 3 });
+    expect(result.files[0]).toMatchObject({
+      path: 'src/app.ts',
+      owner: 'Alice Example',
+      ownerShare: 68,
+      authors: 2,
+      commits: 3,
+    });
+  });
+
+  it('gives recent commits more weight', async () => {
+    const result = await insights.knowledgeMap(repo.path, {
+      ...defaults,
+      path: 'src/app.ts',
+      halfLifeDays: 1,
+    });
+    expect(result.path).toBe('src/app.ts');
+    expect(shares(result.authors)).toEqual([
+      ['Alice Example', 100],
+      ['Bob Example', 0],
+    ]);
+  });
+
+  it('finds a larger bus factor and skips large commits', async () => {
+    const couplingRepo = await createCouplingRepo();
+    try {
+      const result = await insights.knowledgeMap(couplingRepo.path, {
+        ...defaults,
+        halfLifeDays: 3650,
+      });
+      expect(result.busFactor).toBe(2);
+      // Equal raw counts: Bob's knowledge is slightly more recent.
+      expect(shares(result.authors)).toEqual([
+        ['Bob Example', 40],
+        ['Alice Example', 40],
+        ['Carol Example', 20],
+      ]);
+
+      const skipped = await insights.knowledgeMap(couplingRepo.path, {
+        ...defaults,
+        maxFilesPerCommit: 3,
+      });
+      expect(skipped.commitsSkipped).toBe(1);
+
+      const noDocs = await insights.knowledgeMap(couplingRepo.path, {
+        ...defaults,
+        exclude: ['docs/'],
+      });
+      expect(noDocs.files.map((f) => f.path)).not.toContain('docs/api.md');
+    } finally {
+      await couplingRepo.cleanup();
+    }
+  });
+
+  it('rejects unsafe paths', async () => {
+    await expect(insights.knowledgeMap(repo.path, { ...defaults, path: '../etc' })).rejects.toThrow(
+      InputError,
+    );
+  });
+});
+
 describe('contributorSummary', () => {
   it('counts commits per author on HEAD', async () => {
     const result = await insights.contributorSummary(repo.path, {

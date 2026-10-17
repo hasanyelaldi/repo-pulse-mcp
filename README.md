@@ -102,6 +102,7 @@ no shell at all.
 | Tool     | `release_notes_draft`       | Commits between two refs grouped by conventional-commit type + Markdown |
 | Tool     | `compare_refs`              | Ahead/behind counts and commits between two branches, tags or commits   |
 | Tool     | `stale_branches`            | Branches with no commits for N days, with "already merged" flag         |
+| Tool     | `knowledge_map`             | Who knows a file or directory: recency-weighted ownership, bus factor   |
 | Tool     | `contributor_summary`       | Commits per author in a time window                                     |
 | Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts       |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update      |
@@ -329,6 +330,27 @@ Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, trun
 
 Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, lastCommitDate, lastAuthor, daysSinceLastCommit, mergedIntoHead }] }`
 
+### `knowledge_map`
+
+| Input               | Type     | Default | Notes                                                  |
+| ------------------- | -------- | ------- | ------------------------------------------------------ |
+| `path`              | string   | –       | A file or subtree; omit for the whole repository       |
+| `days`              | integer  | 365     | 1–3650                                                 |
+| `halfLifeDays`      | integer  | 90      | A commit counts half as much for every N days of age   |
+| `exclude`           | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots` |
+| `maxFilesPerCommit` | integer  | 30      | Commits touching more files are skipped                |
+| `limit`             | integer  | 10      | 1–100, applies to `authors` and `files` separately     |
+
+Output: `{ repo, path, windowDays, halfLifeDays, commitsScanned, scanTruncated, commitsSkipped, filesAnalyzed, busFactor, concentratedFiles, authors: [{ author, share, filesOwned, commits, lastCommit }], files: [{ path, owner, ownerShare, authors, commits, lastChanged }] }`
+
+Every commit that touches a file gives its author knowledge of that file, halved every
+`halfLifeDays`, so someone who reworked a module last month outranks someone who wrote it three
+years ago. Line counts are ignored so generated or reformatted diffs do not dominate. `share` and
+`ownerShare` are percentages. `busFactor` is the fewest authors who together hold more than half
+of the knowledge in the area; `concentratedFiles` counts files where one author holds at least
+80%. `files` lists the most frequently changed files first with their main owner, which makes it
+a quick reviewer suggestion for a path. Merge commits are excluded and renames are not followed.
+
 ### `contributor_summary`
 
 | Input           | Type    | Default | Notes                 |
@@ -464,12 +486,11 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
-- Renames are not followed in `file_hotspots`.
+- Renames are not followed in `file_hotspots`, `change_coupling` and `knowledge_map`.
 - Each session pays about 2.5k tokens for the tool definitions, and `release_notes_draft`
   returns its content both as sections and as Markdown, so on simple questions a shell can be
   cheaper (see [Benchmark](#benchmark)).
-- Possible next steps: a leaner `release_notes_draft` output, per-directory ownership stats, an
-  HTTP transport for team use.
+- Possible next steps: a leaner `release_notes_draft` output, an HTTP transport for team use.
 
 ## License
 
