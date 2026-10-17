@@ -93,10 +93,25 @@ node bench/summarize.mjs
 Because the questions use relative time windows, numbers will drift when you run them on a
 later date.
 
-## Demo GIF
+## Demo GIFs
 
-[`docs/demo.gif`](../docs/demo.gif) is rendered from a real run in pulse mode on vite. The run
-used `--output-format stream-json --verbose`, and [`to-cast.mjs`](to-cast.mjs) converted the
+Both GIFs are rendered from real runs in pulse mode on vite. The runs used
+`--output-format stream-json --verbose`, and [`to-cast.mjs`](to-cast.mjs) converted the
 transcript to an asciicast, which [agg](https://github.com/asciinema/agg) turned into a GIF. Only
 typing speed and colours are added. The tool calls, their arguments, the answer and the footer
-(4 tool calls, 9.7 s) come from the transcript.
+come from the transcript.
+
+- [`docs/demo-review.gif`](../docs/demo-review.gif): `review_context` on the vite branch
+  `fix/chunk-import-map-preload-hashing` against `origin/main` at `df7503cc4`, recorded on
+  2026-10-17 with v0.4.0 plus the author identity fix. Rendered with
+  `agg --font-size 14 --theme monokai`.
+- [`docs/demo.gif`](../docs/demo.gif): unreleased changes and stale branches, recorded with v0.3.0.
+
+To record a new one, run the question like `run.sh` does in pulse mode, but with
+`--output-format stream-json --verbose` and the output redirected to a `.jsonl` file, then:
+
+```bash
+DEMO_LABEL="vitejs/vite @ <commit> · Claude Code + repo-pulse (no shell)" \
+  node bench/to-cast.mjs transcript.jsonl "<question>" demo.cast
+agg --font-size 14 --theme monokai demo.cast docs/demo-review.gif
+```
