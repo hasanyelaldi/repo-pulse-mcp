@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.hasanyelaldi/repo-pulse-mcp",
   "title": "repo-pulse",
-  "description": "Read-only git insights for AI assistants: hotspots, change coupling, release notes, stale branches",
+  "description": "Read-only git insights for AI: PR review context, bug hotspots, code ownership, release notes",
   "repository": {
     "url": "https://github.com/hasanyelaldi/repo-pulse-mcp",
     "source": "github"
