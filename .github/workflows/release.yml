@@ -49,16 +49,22 @@ jobs:
 
       - run: npm ci
 
+      # npm validates package.json before prepublishOnly runs, and without build/
+      # it warns "No bin file found" and may drop the bin entry, which breaks npx.
+      - run: npm run build
+
       # prepublishOnly runs the full check (lint, format, typecheck, tests, build).
       # Skipped when the version is already on npm, so a re-run of the workflow is safe.
       # Provenance is generated automatically for trusted publishing from a public repo.
+      # If the OIDC exchange fails, npm silently falls back to setup-node's placeholder
+      # token and the registry answers 404; verbose logging shows why the exchange failed.
       - name: Publish to npm
         run: |
           version="$(node -p 'require("./package.json").version')"
           if npm view "repo-pulse-mcp@${version}" version >/dev/null 2>&1; then
             echo "repo-pulse-mcp@${version} is already published, skipping."
           else
-            npm publish --access public
+            npm publish --access public --loglevel verbose
           fi
 
   mcp-registry:
