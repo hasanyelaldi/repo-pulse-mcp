@@ -135,6 +135,27 @@ const changeCouplingOutput = z.object({
   ),
 });
 
+const listTagsOutput = z.object({
+  repo: repoOutputField,
+  totalTags: z.number(),
+  latestOnHead: z
+    .string()
+    .nullable()
+    .describe('Latest tag reachable from HEAD (the current release line), or null.'),
+  commitsSinceLatest: z
+    .number()
+    .nullable()
+    .describe('Commits on HEAD after latestOnHead, i.e. not released yet.'),
+  tags: z.array(
+    z.object({
+      name: z.string(),
+      date: z.string().describe('Tag date (tagger date, or commit date for lightweight tags).'),
+      shortHash: z.string().describe('Tagged commit.'),
+      subject: z.string().describe('Subject of the tagged commit.'),
+    }),
+  ),
+});
+
 const releaseNotesOutput = z.object({
   repo: repoOutputField,
   from: z.string().nullable().describe('Start ref (exclusive); null means from the first commit.'),
@@ -404,13 +425,35 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
   );
 
   server.registerTool(
+    'list_tags',
+    {
+      title: 'List tags',
+      description:
+        'List tags (releases) newest first with their date and tagged commit, plus the latest tag ' +
+        'reachable from HEAD and how many commits were made since it (unreleased work). Use it ' +
+        'to find tag names for release_notes_draft or compare_refs.',
+      inputSchema: z.object({
+        repo: repoField,
+        limit: limitField(20, 200),
+      }),
+      outputSchema: listTagsOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.listTags(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
     'release_notes_draft',
     {
       title: 'Release notes draft',
       description:
         'Group commits between two refs by conventional-commit type (breaking changes, features, ' +
         'fixes, ...) and return both structured sections and a Markdown draft. "from" defaults to ' +
-        'the latest tag before "to"; without any tag, all commits up to "to" are used.',
+        'the latest tag before "to"; without any tag, all commits up to "to" are used. To draft ' +
+        'notes for an existing release, pass its tag as "to" (see list_tags).',
       inputSchema: z.object({
         repo: repoField,
         from: z

@@ -310,6 +310,39 @@ describe('fileHistory', () => {
   });
 });
 
+describe('listTags', () => {
+  it('lists tags with the latest tag on HEAD and unreleased commits', async () => {
+    const result = await insights.listTags(repo.path, { limit: 20 });
+    expect(result).toEqual({
+      totalTags: 1,
+      latestOnHead: 'v0.1.0',
+      commitsSinceLatest: 6,
+      tags: [
+        {
+          name: 'v0.1.0',
+          date: expect.any(String),
+          shortHash: expect.stringMatching(/^[0-9a-f]{7}$/),
+          subject: 'chore: initial commit',
+        },
+      ],
+    });
+  });
+
+  it('handles repositories without tags', async () => {
+    const untagged = await createRenameRepo();
+    try {
+      expect(await insights.listTags(untagged.path, { limit: 20 })).toEqual({
+        totalTags: 0,
+        latestOnHead: null,
+        commitsSinceLatest: null,
+        tags: [],
+      });
+    } finally {
+      await untagged.cleanup();
+    }
+  });
+});
+
 describe('compareRefs', () => {
   it('lists commits on each side of a diverged branch', async () => {
     const result = await insights.compareRefs(repo.path, {
