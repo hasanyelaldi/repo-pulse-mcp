@@ -55,6 +55,30 @@ export const BRANCH_FORMAT = [
   '%(symref)',
 ].join('%1f');
 
+/**
+ * `git for-each-ref refs/tags` format. Fields prefixed with "*" describe the
+ * commit an annotated tag points to; they are empty for lightweight tags.
+ */
+export const TAG_FORMAT = [
+  '%(refname:short)',
+  '%(creatordate:iso-strict)',
+  '%(objecttype)',
+  '%(objectname)',
+  '%(*objecttype)',
+  '%(*objectname)',
+  '%(subject)',
+  '%(*subject)',
+].join('%1f');
+
+export interface TagRef {
+  name: string;
+  /** Tagger date for annotated tags, commit date for lightweight tags. */
+  date: string;
+  shortHash: string;
+  /** Subject of the tagged commit. */
+  subject: string;
+}
+
 function splitRecords(stdout: string): string[] {
   return stdout.split(RECORD_SEP).filter((record) => record.trim().length > 0);
 }
@@ -133,6 +157,29 @@ export function parseBranches(stdout: string): BranchRef[] {
     branches.push({ name, lastCommitDate, lastAuthor: lastAuthor ?? '' });
   }
   return branches;
+}
+
+/**
+ * Parses output produced by `git for-each-ref --format=` {@link TAG_FORMAT}.
+ * Tags that do not point to a commit (e.g. tagged trees) are skipped.
+ */
+export function parseTags(stdout: string): TagRef[] {
+  const tags: TagRef[] = [];
+  for (const line of stdout.split('\n')) {
+    if (line.trim().length === 0) continue;
+    const [name, date, type, hash, peeledType, peeledHash, subject, peeledSubject] =
+      line.split(FIELD_SEP);
+    const annotated = type === 'tag';
+    const commitHash = annotated ? peeledHash : hash;
+    if (!name || !date || (annotated ? peeledType : type) !== 'commit' || !commitHash) continue;
+    tags.push({
+      name,
+      date,
+      shortHash: commitHash.slice(0, 7),
+      subject: (annotated ? peeledSubject : subject) ?? '',
+    });
+  }
+  return tags;
 }
 
 /**

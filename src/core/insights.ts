@@ -7,7 +7,9 @@ import {
   parseCommits,
   parseCommitsWithBody,
   parseCommitsWithNumstat,
+  parseTags,
   renamedPath,
+  TAG_FORMAT,
   type Commit,
 } from '../git/parsers.js';
 import type { GitRunner } from '../git/runner.js';
@@ -331,6 +333,48 @@ export class RepoInsights {
       commitsSkipped,
       pairCount: pairs.length,
       pairs: pairs.slice(0, opts.limit),
+    };
+  }
+
+  /** Tags newest first, plus the latest tag on HEAD and how many commits came after it. */
+  async listTags(repoPath: string, opts: { limit: number }) {
+    const optional = (args: string[]) =>
+      this.runGit(repoPath, args)
+        .then((s) => s.trim() || null)
+        .catch(() => null);
+
+    const [tagsOut, latestOnHead] = await Promise.all([
+      this.runGit(repoPath, [
+        'for-each-ref',
+        '--sort=-creatordate',
+        `--format=${TAG_FORMAT}`,
+        'refs/tags',
+      ]),
+      // Unborn HEAD or no reachable tag: null.
+      optional(['describe', '--tags', '--abbrev=0', 'HEAD']),
+    ]);
+    const tags = parseTags(tagsOut);
+
+    let commitsSinceLatest: number | null = null;
+    if (latestOnHead !== null) {
+      // The name comes from git itself, so it is not re-validated; it still goes
+      // after --end-of-options and is resolved to a hash before use.
+      const commit = await optional([
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        '--end-of-options',
+        `${latestOnHead}^{commit}`,
+      ]);
+      const count = commit && (await optional(['rev-list', '--count', `${commit}..HEAD`]));
+      commitsSinceLatest = count ? Number.parseInt(count, 10) : null;
+    }
+
+    return {
+      totalTags: tags.length,
+      latestOnHead,
+      commitsSinceLatest,
+      tags: tags.slice(0, opts.limit),
     };
   }
 

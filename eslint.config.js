@@ -5,8 +5,8 @@ import prettier from 'eslint-config-prettier';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
 export default defineConfig(
-  // Never lint build output or dependencies.
-  globalIgnores(['build/', 'coverage/', 'node_modules/']),
+  // Never lint build output or dependencies. bench/ holds standalone dev scripts.
+  globalIgnores(['build/', 'coverage/', 'node_modules/', 'bench/']),
 
   // Baseline JavaScript + TypeScript recommended rules.
   eslint.configs.recommended,

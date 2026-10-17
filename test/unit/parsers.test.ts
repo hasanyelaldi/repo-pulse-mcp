@@ -6,6 +6,7 @@ import {
   parseCommits,
   parseCommitsWithBody,
   parseCommitsWithNumstat,
+  parseTags,
   renamedPath,
 } from '../../src/git/parsers.js';
 
@@ -77,6 +78,31 @@ describe('parseCommitsWithNumstat', () => {
       { path: 'docs/my notes.md', additions: 3, deletions: 0 },
     ]);
     expect(commits[1]?.files).toEqual([]);
+  });
+});
+
+describe('parseTags', () => {
+  it('uses the tagged commit for annotated tags and skips non-commit tags', () => {
+    const line = (...fields: string[]) => fields.join(F);
+    const out = [
+      line(
+        'v2.0.0',
+        '2026-01-12T10:00:00Z',
+        'tag',
+        HASH_A,
+        'commit',
+        HASH_B,
+        'Release 2.0',
+        'feat: x',
+      ),
+      line('v1.0.0', '2026-01-01T09:00:00Z', 'commit', HASH_A, '', '', 'fix: y', ''),
+      line('tree-tag', '2026-01-01T08:00:00Z', 'tag', HASH_A, 'tree', HASH_B, 'A tree', ''),
+      '',
+    ].join('\n');
+    expect(parseTags(out)).toEqual([
+      { name: 'v2.0.0', date: '2026-01-12T10:00:00Z', shortHash: 'bbbbbbb', subject: 'feat: x' },
+      { name: 'v1.0.0', date: '2026-01-01T09:00:00Z', shortHash: 'aaaaaaa', subject: 'fix: y' },
+    ]);
   });
 });
 

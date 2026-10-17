@@ -18,3 +18,7 @@ npm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Benchmark working files (see bench/README.md)
+bench/repos/
+bench/results/
