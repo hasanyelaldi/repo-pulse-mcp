@@ -5,6 +5,7 @@ import {
   parseBranches,
   parseCommits,
   parseCommitsWithBody,
+  parseCommitsWithNameStatus,
   parseCommitsWithNumstat,
   parseTags,
   renamedPath,
@@ -92,6 +93,28 @@ describe('parseCommitsWithNumstat', () => {
       { path: 'docs/my notes.md', additions: 3, deletions: 0 },
     ]);
     expect(commits[1]?.files).toEqual([]);
+  });
+});
+
+describe('parseCommitsWithNameStatus', () => {
+  it('attaches file statuses, including paths with spaces and tabs', () => {
+    const out = [
+      `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}refactor: move${F}alice@example.com`,
+      '',
+      'D\tsrc/old.ts',
+      'A\tlib/new name.ts',
+      'M\tweird\tname.md',
+      `${R}${HASH_B}${F}Bob${F}2026-01-09T10:00:00Z${F}chore: empty`,
+      '',
+    ].join('\n');
+    const [a, b] = parseCommitsWithNameStatus(out);
+    expect(a?.files).toEqual([
+      { status: 'D', path: 'src/old.ts' },
+      { status: 'A', path: 'lib/new name.ts' },
+      { status: 'M', path: 'weird\tname.md' },
+    ]);
+    expect(a?.authorKey).toMatch(/^[0-9a-f]{16}$/);
+    expect(b?.files).toEqual([]);
   });
 });
 

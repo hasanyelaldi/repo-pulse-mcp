@@ -337,3 +337,55 @@ export async function createAliasRepo(): Promise<TempRepo> {
 
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
+
+/**
+ * Creates a history with a merge that adds and deletes files by itself (days before {@link NOW}):
+ *
+ *   6  feat: add a and b                   alice   (a.ts, b.ts)
+ *   4  feat: add c                         bob     (c.ts)              feature
+ *   3  docs: readme                        carol   (README.md)
+ *   2  Merge branch 'feature'              alice   (+ merge-only.ts, - b.ts)
+ */
+export async function createMergeRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-merge-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+
+  await commit(path, {
+    daysAgo: 6,
+    by: 'alice',
+    subject: 'feat: add a and b',
+    files: { 'a.ts': 'a\n', 'b.ts': 'b\n' },
+  });
+  git(path, ['checkout', '--quiet', '-b', 'feature']);
+  await commit(path, { daysAgo: 4, by: 'bob', subject: 'feat: add c', files: { 'c.ts': 'c\n' } });
+  git(path, ['checkout', '--quiet', 'main']);
+  await commit(path, {
+    daysAgo: 3,
+    by: 'carol',
+    subject: 'docs: readme',
+    files: { 'README.md': '# Demo\n' },
+  });
+  git(path, ['merge', '--quiet', '--no-ff', '--no-commit', 'feature']);
+  git(path, ['rm', '--quiet', 'b.ts']);
+  await commit(path, {
+    daysAgo: 2,
+    by: 'alice',
+    subject: "Merge branch 'feature'",
+    files: { 'merge-only.ts': 'm\n' },
+  });
+
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}
+
+/** Creates a single commit with non-ASCII file names (1 day before {@link NOW}). */
+export async function createUnicodeRepo(): Promise<TempRepo> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'repo-pulse-unicode-')));
+  git(path, ['init', '--quiet', '--initial-branch=main']);
+  await commit(path, {
+    daysAgo: 1,
+    by: 'alice',
+    subject: 'docs: add notes',
+    files: { 'docs/çözüm notları.md': 'x\n', 'docs/テスト.md': 'y\n' },
+  });
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
+}
