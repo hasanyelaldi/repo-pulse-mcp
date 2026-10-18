@@ -28,33 +28,18 @@ const repoField = z
   .string()
   .max(1000)
   .optional()
-  .describe(
-    'Repository name or absolute path from the allowlist. Defaults to the first configured repo.',
-  );
+  .describe('Repo name or path; defaults to the first configured repo.');
 
 const daysField = (defaultDays: number) =>
-  z
-    .number()
-    .int()
-    .min(1)
-    .max(3650)
-    .default(defaultDays)
-    .describe('Size of the time window in days.');
+  z.number().int().min(1).max(3650).default(defaultDays).describe('Time window in days.');
 
 const limitField = (defaultLimit: number, max: number) =>
-  z
-    .number()
-    .int()
-    .min(1)
-    .max(max)
-    .default(defaultLimit)
-    .describe(`Maximum number of results (1-${max}).`);
+  z.number().int().min(1).max(max).default(defaultLimit).describe('Maximum number of results.');
 
 // ---------- Output schemas ----------
 
 const commitSchema = z.object({
-  hash: z.string(),
-  shortHash: z.string(),
+  shortHash: z.string().describe('Abbreviated hash; usable wherever a ref is accepted.'),
   author: z.string(),
   date: z.string().describe('Author date, ISO 8601.'),
   subject: z.string(),
@@ -171,21 +156,24 @@ const releaseNotesOutput = z.object({
   to: z.string(),
   commitCount: z.number(),
   truncated: z.boolean(),
-  sections: z.array(
-    z.object({
-      key: z.enum(SECTIONS.map((s) => s.key) as [string, ...string[]]),
-      title: z.string(),
-      entries: z.array(
-        z.object({
-          shortHash: z.string(),
-          scope: z.string().nullable(),
-          description: z.string(),
-          author: z.string(),
-        }),
-      ),
-    }),
-  ),
-  markdown: z.string(),
+  sections: z
+    .array(
+      z.object({
+        key: z.enum(SECTIONS.map((s) => s.key) as [string, ...string[]]),
+        title: z.string(),
+        entries: z.array(
+          z.object({
+            shortHash: z.string(),
+            scope: z.string().nullable(),
+            description: z.string(),
+            author: z.string(),
+          }),
+        ),
+      }),
+    )
+    .optional()
+    .describe('Present when format is "sections" or "both".'),
+  markdown: z.string().optional().describe('Present when format is "markdown" or "both".'),
 });
 
 const compareRefsOutput = z.object({
@@ -378,7 +366,8 @@ const contributorSummaryOutput = z.object({
 /** Returns the result both as structured content and as JSON text for older clients. */
 function toolResult<T extends Record<string, unknown>>(data: T): CallToolResult {
   return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    // Compact JSON: indentation would add 20-30% to every result's token cost.
+    content: [{ type: 'text', text: JSON.stringify(data) }],
     structuredContent: data,
   };
 }
@@ -557,7 +546,7 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .array(z.string().min(1).max(200))
           .max(20)
           .optional()
-          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+          .describe('Globs to leave out, as in file_hotspots.'),
         minShared: z
           .number()
           .int()
@@ -610,7 +599,7 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
       title: 'Release notes draft',
       description:
         'Group commits between two refs by conventional-commit type (breaking changes, features, ' +
-        'fixes, ...) and return both structured sections and a Markdown draft. "from" defaults to ' +
+        'fixes, ...) as a Markdown draft, or as structured sections. "from" defaults to ' +
         'the latest tag before "to"; without any tag, all commits up to "to" are used. To draft ' +
         'notes for an existing release, pass its tag as "to" (see list_tags).',
       inputSchema: z.object({
@@ -621,6 +610,10 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .optional()
           .describe('Start ref, exclusive (tag, branch or commit).'),
         to: z.string().max(200).default('HEAD').describe('End ref, inclusive.'),
+        format: z
+          .enum(['markdown', 'sections', 'both'])
+          .default('markdown')
+          .describe('"markdown" for a ready-to-paste draft, "sections" for structured data.'),
       }),
       outputSchema: releaseNotesOutput,
       annotations: READ_ONLY,
@@ -707,7 +700,7 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .array(z.string().min(1).max(200))
           .max(20)
           .optional()
-          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+          .describe('Globs to leave out, as in file_hotspots.'),
         maxFilesPerCommit: z
           .number()
           .int()
@@ -755,7 +748,7 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .array(z.string().min(1).max(200))
           .max(20)
           .optional()
-          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+          .describe('Globs to leave out, as in file_hotspots.'),
         minShared: z
           .number()
           .int()
@@ -821,7 +814,7 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
           .array(z.string().min(1).max(200))
           .max(20)
           .optional()
-          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+          .describe('Globs to leave out, as in file_hotspots.'),
         limit: limitField(20, 100),
       }),
       outputSchema: codeAgeOutput,

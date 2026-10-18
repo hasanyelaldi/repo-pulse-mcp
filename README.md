@@ -270,6 +270,10 @@ For an MCP client, use `podman` as the `command` and the rest as `args`.
 Every tool accepts an optional `repo` argument: a repository **name** (the directory name, shown
 in the overview resource) or its absolute path. It defaults to the first configured repository.
 
+Results are compact JSON, and commit lists carry `shortHash` (git's abbreviated hash, long enough
+to be unambiguous in the repository) rather than the full hash; it works anywhere a ref is
+accepted.
+
 ### `review_context`
 
 | Input               | Type     | Default | Notes                                                       |
@@ -405,12 +409,16 @@ Output: `{ repo, windowDays, totalCommits, scanTruncated, contributorCount, cont
 
 ### `release_notes_draft`
 
-| Input  | Type   | Default                | Notes                                 |
-| ------ | ------ | ---------------------- | ------------------------------------- |
-| `from` | string | latest tag before `to` | Exclusive. Tag, branch or commit hash |
-| `to`   | string | `HEAD`                 | Inclusive                             |
+| Input    | Type   | Default                | Notes                                 |
+| -------- | ------ | ---------------------- | ------------------------------------- |
+| `from`   | string | latest tag before `to` | Exclusive. Tag, branch or commit hash |
+| `to`     | string | `HEAD`                 | Inclusive                             |
+| `format` | string | `markdown`             | `markdown`, `sections` or `both`      |
 
-Output: `{ repo, from, to, commitCount, truncated, sections: [{ key, title, entries: [{ shortHash, scope, description, author }] }], markdown }`
+Output: `{ repo, from, to, commitCount, truncated, markdown?, sections?: [{ key, title, entries: [{ shortHash, scope, description, author }] }] }`
+
+`markdown` is a ready-to-paste draft; `sections` is the same content as structured data. Only the
+requested format is returned, because both together double the size of the result.
 
 Sections, in order: Breaking Changes, Features, Bug Fixes, Performance, Refactoring,
 Documentation, Tests, Build System, Continuous Integration, Chores, Reverts, Other Changes.
@@ -437,7 +445,7 @@ which can differ from the newest tag when maintenance releases are tagged on oth
 | `head`  | string  | `HEAD`  | Ref to compare                                 |
 | `limit` | integer | 20      | 1–100, applies to each commit list separately  |
 
-Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, truncated, aheadCommits: [{ hash, shortHash, author, date, subject }], behindCommits: [...] }`
+Output: `{ repo, base, head, baseCommit, headCommit, ahead, behind, status, truncated, aheadCommits: [{ shortHash, author, date, subject }], behindCommits: [...] }`
 
 `ahead` counts commits reachable from `head` but not `base`, `behind` the reverse. `status` is
 `identical`, `ahead`, `behind` or `diverged`. Both refs go through the same validation as
@@ -463,7 +471,7 @@ Output: `{ repo, thresholdDays, totalBranches, staleCount, branches: [{ name, la
 | `path`   | string  | –       | Repository-relative file or directory           |
 | `limit`  | integer | 50      | 1–200                                           |
 
-Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ shortHash, author, date, subject }] }`
 
 ### `commit_search`
 
@@ -475,7 +483,7 @@ Output: `{ repo, windowDays, totalCommits, truncated, commits: [{ hash, shortHas
 | `path`   | string  | –       | Repository-relative file or directory                       |
 | `limit`  | integer | 20      | 1–100                                                       |
 
-Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, shortHash, author, date, subject }] }`
+Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ shortHash, author, date, subject }] }`
 
 ### `file_history`
 
@@ -484,7 +492,7 @@ Output: `{ repo, query, windowDays, totalMatches, truncated, commits: [{ hash, s
 | `path`  | string  | –       | Required. Repository-relative file, as at HEAD |
 | `limit` | integer | 20      | 1–100                                          |
 
-Output: `{ repo, path, commitCount, truncated, renamed, commits: [{ hash, shortHash, author, date, subject, path, additions, deletions }] }`
+Output: `{ repo, path, commitCount, truncated, renamed, commits: [{ shortHash, author, date, subject, path, additions, deletions }] }`
 
 Renames are followed, so older commits report the path the file had at the time and `renamed` is
 `true` when the listed commits span more than one path. Merge commits are skipped; `additions` and
@@ -616,10 +624,9 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
   branches is not counted.
 - Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map`,
   `review_context` and `code_age`: a renamed file counts as new from the rename on.
-- Each session pays about 4k tokens for the tool definitions, and `release_notes_draft`
-  returns its content both as sections and as Markdown, so on simple questions a shell can be
-  cheaper (see [Benchmark](#benchmark)).
-- Possible next steps: a leaner `release_notes_draft` output, an HTTP transport for team use.
+- Each session pays about 4k tokens for the tool definitions, so on simple one-off questions a
+  shell can be cheaper (see [Benchmark](#benchmark)).
+- Possible next steps: an HTTP transport for team use.
 
 ## License
 

@@ -183,7 +183,7 @@ describe('releaseNotesDraft', () => {
     const result = await insights.releaseNotesDraft(repo.path, { to: 'HEAD' });
     expect(result.from).toBe('v0.1.0');
     expect(result.commitCount).toBe(6);
-    expect(result.sections.map((s) => s.key)).toEqual([
+    expect(result.sections?.map((s) => s.key)).toEqual([
       'breaking',
       'feat',
       'fix',
@@ -191,7 +191,7 @@ describe('releaseNotesDraft', () => {
       'docs',
       'other',
     ]);
-    expect(result.sections[0]?.entries.map((e) => e.description)).toEqual([
+    expect(result.sections?.[0]?.entries.map((e) => e.description)).toEqual([
       'simplify',
       'drop legacy config',
     ]);
@@ -199,12 +199,27 @@ describe('releaseNotesDraft', () => {
     expect(result.markdown).toContain('**api:** add users endpoint');
   });
 
+  it('returns only the requested format', async () => {
+    const markdown = await insights.releaseNotesDraft(repo.path, {
+      to: 'HEAD',
+      format: 'markdown',
+    });
+    expect(markdown).not.toHaveProperty('sections');
+    expect(markdown.markdown).toContain('## Features');
+    const sections = await insights.releaseNotesDraft(repo.path, {
+      to: 'HEAD',
+      format: 'sections',
+    });
+    expect(sections).not.toHaveProperty('markdown');
+    expect(sections.sections?.length).toBeGreaterThan(0);
+  });
+
   it('supports explicit refs', async () => {
     const result = await insights.releaseNotesDraft(repo.path, {
       from: 'merged-branch',
       to: 'HEAD~2',
     });
-    expect(result.sections.flatMap((s) => s.entries.map((e) => e.description))).toEqual(
+    expect(result.sections?.flatMap((s) => s.entries.map((e) => e.description))).toEqual(
       expect.arrayContaining(['handle empty input', 'drop legacy config', 'update readme']),
     );
     expect(result.commitCount).toBe(3);

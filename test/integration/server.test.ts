@@ -65,7 +65,24 @@ describe('MCP server', () => {
 
   it('applies schema defaults', async () => {
     const result = await client.callTool({ name: 'release_notes_draft', arguments: {} });
-    expect((result.structuredContent as { from: string }).from).toBe('v0.1.0');
+    const structured = result.structuredContent as { from: string; markdown?: string };
+    expect(structured.from).toBe('v0.1.0');
+    // Markdown only by default, to keep the result small.
+    expect(structured.markdown).toContain('## Features');
+    expect(structured).not.toHaveProperty('sections');
+  });
+
+  it('returns compact JSON text without the full commit hash', async () => {
+    const result = await client.callTool({ name: 'recent_activity', arguments: { days: 7 } });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).not.toContain('\n');
+    const commits = (result.structuredContent as { commits: Record<string, unknown>[] }).commits;
+    expect(Object.keys(commits[0] ?? {}).sort()).toEqual([
+      'author',
+      'date',
+      'shortHash',
+      'subject',
+    ]);
   });
 
   it('reports invalid input as a tool error instead of crashing', async () => {
