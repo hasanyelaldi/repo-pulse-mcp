@@ -217,6 +217,29 @@ REPO_PULSE_REPOS=~/code/my-app:~/code/my-lib npx -y repo-pulse-mcp
 Without any configured repository the server refuses to start. It is also listed in the
 [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.hasanyelaldi/repo-pulse-mcp`.
 
+### Choosing tools
+
+Every enabled tool's definition costs tokens in every session, about 4k for all 13. If you only
+need some of them, enable just those with `--tools` (or `REPO_PULSE_TOOLS`), using the groups
+from [Features](#features), single tool names, or both:
+
+| Toolset     | Tools                                                                | Definitions  |
+| ----------- | -------------------------------------------------------------------- | ------------ |
+| `review`    | `review_context`, `file_hotspots`, `change_coupling`                 | ~1.3k tokens |
+| `ownership` | `knowledge_map`, `code_age`, `contributor_summary`                   | ~950 tokens  |
+| `releases`  | `release_notes_draft`, `list_tags`, `compare_refs`, `stale_branches` | ~950 tokens  |
+| `history`   | `recent_activity`, `commit_search`, `file_history`                   | ~800 tokens  |
+| `all`       | Everything (the default)                                             | ~4k tokens   |
+
+```bash
+npx -y repo-pulse-mcp --repo ~/code/my-app --tools review,list_tags
+# or
+REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
+```
+
+An unknown name stops the server at startup with the list of valid names. The
+`weekly_engineering_update` prompt is only offered when the four tools it uses are enabled.
+
 ### Claude Code
 
 Run this inside the repository you want to ask about:
@@ -625,7 +648,8 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 - Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map`,
   `review_context` and `code_age`: a renamed file counts as new from the rename on.
 - Each session pays about 4k tokens for the tool definitions, so on simple one-off questions a
-  shell can be cheaper (see [Benchmark](#benchmark)).
+  shell can be cheaper (see [Benchmark](#benchmark)). [Choosing tools](#choosing-tools) cuts this
+  to the groups you use.
 - Possible next steps: an HTTP transport for team use.
 
 ## License

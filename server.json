@@ -23,6 +23,13 @@
           "isRequired": true,
           "isSecret": false,
           "format": "string"
+        },
+        {
+          "name": "REPO_PULSE_TOOLS",
+          "description": "Comma-separated toolsets (review, ownership, releases, history) or tool names to enable; all tools by default",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
         }
       ]
     }

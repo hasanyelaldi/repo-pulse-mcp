@@ -1,6 +1,12 @@
 import { delimiter } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseRepoPaths, RepoRegistry, REPOS_ENV_VAR } from '../../src/config.js';
+import {
+  parseRepoPaths,
+  parseToolNames,
+  RepoRegistry,
+  REPOS_ENV_VAR,
+  TOOLS_ENV_VAR,
+} from '../../src/config.js';
 import { InputError } from '../../src/errors.js';
 
 describe('parseRepoPaths', () => {
@@ -19,12 +25,30 @@ describe('parseRepoPaths', () => {
     ]);
   });
 
+  it('does not mistake the --tools value for a path', () => {
+    expect(parseRepoPaths(['--tools', 'review', '/a', '--tools=history'], {})).toEqual(['/a']);
+  });
+
   it('returns nothing when unconfigured', () => {
     expect(parseRepoPaths([], {})).toEqual([]);
   });
 
   it('rejects --repo without a value', () => {
     expect(() => parseRepoPaths(['--repo'], {})).toThrow(/requires a path/);
+  });
+});
+
+describe('parseToolNames', () => {
+  it('reads comma-separated --tools flags (both forms) and the env var', () => {
+    const names = parseToolNames(['/repo', '--tools', 'review, list_tags', '--tools=history'], {
+      [TOOLS_ENV_VAR]: 'ownership,',
+    });
+    expect(names).toEqual(['review', 'list_tags', 'history', 'ownership']);
+  });
+
+  it('returns nothing when unconfigured and rejects --tools without a value', () => {
+    expect(parseToolNames(['/repo'], {})).toEqual([]);
+    expect(() => parseToolNames(['--tools'], {})).toThrow(/comma-separated/);
   });
 });
 

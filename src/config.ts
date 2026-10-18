@@ -4,6 +4,7 @@ import { InputError } from './errors.js';
 import type { GitRunner } from './git/runner.js';
 
 export const REPOS_ENV_VAR = 'REPO_PULSE_REPOS';
+export const TOOLS_ENV_VAR = 'REPO_PULSE_TOOLS';
 
 export interface Repository {
   /** Short, unique name clients can use instead of the full path. */
@@ -32,6 +33,8 @@ export function parseRepoPaths(argv: readonly string[], env: NodeJS.ProcessEnv):
       i++;
     } else if (arg.startsWith('--repo=')) {
       paths.push(arg.slice('--repo='.length));
+    } else if (arg === '--tools') {
+      i++; // its value is a tool list, not a path
     } else if (!arg.startsWith('-')) {
       paths.push(arg);
     }
@@ -40,6 +43,33 @@ export function parseRepoPaths(argv: readonly string[], env: NodeJS.ProcessEnv):
     if (entry.trim().length > 0) paths.push(entry.trim());
   }
   return paths.filter((p) => p.length > 0);
+}
+
+/**
+ * Collects tool and toolset names from `--tools a,b` / `--tools=a,b` (repeatable)
+ * and the {@link TOOLS_ENV_VAR} environment variable, both comma-separated.
+ * An empty result means every tool.
+ */
+export function parseToolNames(argv: readonly string[], env: NodeJS.ProcessEnv): string[] {
+  const lists: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] ?? '';
+    if (arg === '--tools') {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('--')) {
+        throw new Error('--tools requires a comma-separated list, e.g. --tools review,releases.');
+      }
+      lists.push(value);
+      i++;
+    } else if (arg.startsWith('--tools=')) {
+      lists.push(arg.slice('--tools='.length));
+    }
+  }
+  lists.push(env[TOOLS_ENV_VAR] ?? '');
+  return lists
+    .flatMap((list) => list.split(','))
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
 function uniqueName(path: string, taken: Set<string>): string {
