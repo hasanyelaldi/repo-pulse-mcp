@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   if (paths.length === 0) {
     // Fail closed: never fall back to the current directory or anything implicit.
     throw new Error(
-      `No repositories configured. Pass --repo <path> (repeatable) or set ${REPOS_ENV_VAR}.`,
+      `No repositories configured. Pass --repo <path> (repeatable), plain paths, or set ${REPOS_ENV_VAR}.`,
     );
   }
 
