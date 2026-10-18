@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RepoRegistry, resolveRepositories } from '../../src/config.js';
 import { runGit } from '../../src/git/runner.js';
 import { createServer } from '../../src/server.js';
+import { ALL_TOOLS, selectTools } from '../../src/toolsets.js';
 import { createFixtureRepo, NOW, type TempRepo } from './fixture.js';
 
 // End-to-end: a real MCP client talks to the server over an in-memory transport.
@@ -113,6 +114,45 @@ describe('MCP server', () => {
       currentBranch: 'main',
       commitCount: 7,
     });
+  });
+
+  it('assigns every registered tool to a toolset', async () => {
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name).sort()).toEqual([...ALL_TOOLS].sort());
+  });
+
+  it('registers only the selected tools, and the prompt only with its tools', async () => {
+    const connect = async (names: string[]) => {
+      const repos = await resolveRepositories([repo.path], runGit);
+      const server = createServer({
+        registry: new RepoRegistry(repos),
+        runGit,
+        tools: selectTools(names),
+      });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([server.connect(serverTransport), c.connect(clientTransport)]);
+      return c;
+    };
+
+    const review = await connect(['review', 'list_tags']);
+    const { tools } = await review.listTools();
+    expect(tools.map((t) => t.name).sort()).toEqual(
+      ['change_coupling', 'file_hotspots', 'list_tags', 'review_context'].sort(),
+    );
+    expect(review.getServerCapabilities()?.prompts).toBeUndefined();
+    await review.close();
+
+    const weekly = await connect([
+      'recent_activity',
+      'contributor_summary',
+      'file_hotspots',
+      'stale_branches',
+    ]);
+    expect((await weekly.listPrompts()).prompts.map((p) => p.name)).toEqual([
+      'weekly_engineering_update',
+    ]);
+    await weekly.close();
   });
 
   it('serves the weekly update prompt', async () => {
