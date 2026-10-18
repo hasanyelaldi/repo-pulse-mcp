@@ -107,6 +107,15 @@ function median(values: readonly number[]): number | null {
     : Math.round(((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2);
 }
 
+/**
+ * A commit as tools list it. The full hash is left out: it costs many tokens
+ * per commit, and shortHash (git's %h, unambiguous in the repository) works
+ * anywhere a ref is accepted.
+ */
+function listed(c: Commit) {
+  return { shortHash: c.shortHash, author: c.author, date: c.date, subject: c.subject };
+}
+
 function pathspec(path: string | undefined): string[] {
   return path === undefined ? [] : ['--', validateRepoPath(path)];
 }
@@ -158,7 +167,7 @@ export class RepoInsights {
       ]),
       this.runGit(repoPath, ['rev-list', '--count', ...filters, 'HEAD', ...paths]),
     ]);
-    const commits = parseCommits(logOut);
+    const commits = parseCommits(logOut).map(listed);
     const totalCommits = Number.parseInt(countOut.trim(), 10) || commits.length;
     return {
       windowDays: opts.days,
@@ -193,7 +202,7 @@ export class RepoInsights {
       ]),
       this.runGit(repoPath, ['rev-list', '--count', ...filters, 'HEAD', ...paths]),
     ]);
-    const commits = parseCommits(logOut);
+    const commits = parseCommits(logOut).map(listed);
     const totalMatches = Number.parseInt(countOut.trim(), 10) || commits.length;
     return {
       query: opts.query.trim(),
@@ -224,7 +233,7 @@ export class RepoInsights {
     const commits = all.slice(0, opts.limit).map(({ files, ...commit }) => {
       const file = files[0];
       return {
-        ...commit,
+        ...listed(commit),
         path: file ? renamedPath(file.path) : null,
         additions: file?.additions ?? null,
         deletions: file?.deletions ?? null,
@@ -484,7 +493,11 @@ export class RepoInsights {
     return tagCommit === commit ? describe(`${commit}^`) : tag;
   }
 
-  async releaseNotesDraft(repoPath: string, opts: { from?: string; to: string }) {
+  async releaseNotesDraft(
+    repoPath: string,
+    opts: { from?: string; to: string; format?: 'markdown' | 'sections' | 'both' },
+  ) {
+    const format = opts.format ?? 'both';
     const toCommit = await this.resolveCommit(repoPath, opts.to);
     const from = opts.from ?? (await this.previousTag(repoPath, toCommit));
     const fromCommit = from === null ? null : await this.resolveCommit(repoPath, from);
@@ -505,8 +518,11 @@ export class RepoInsights {
       to: opts.to,
       commitCount: commits.length,
       truncated: all.length > MAX_RELEASE_COMMITS,
-      sections,
-      markdown: renderMarkdown(sections, { from, to: opts.to }),
+      // The two formats carry the same content; returning one halves the output.
+      ...(format === 'markdown' ? {} : { sections }),
+      ...(format === 'sections'
+        ? {}
+        : { markdown: renderMarkdown(sections, { from, to: opts.to }) }),
     };
   }
 
@@ -522,7 +538,7 @@ export class RepoInsights {
         `--format=${COMMIT_FORMAT}`,
         `--max-count=${opts.limit}`,
         range,
-      ]).then(parseCommits);
+      ]).then((out) => parseCommits(out).map(listed));
 
     const [countOut, aheadCommits, behindCommits] = await Promise.all([
       // Symmetric difference: left side is only in base, right side only in head.

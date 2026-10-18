@@ -56,10 +56,11 @@ export interface BranchRef {
 }
 
 /**
- * `git log` format: hash, author name, author date (ISO 8601 strict), subject.
+ * `git log` format: hash, abbreviated hash, author name, author date (ISO 8601
+ * strict), subject. %h is as long as the repository needs to stay unambiguous;
  * %aN applies the repository's .mailmap, if any.
  */
-export const COMMIT_FORMAT = `${RECORD_SEP}%H${FIELD_SEP}%aN${FIELD_SEP}%aI${FIELD_SEP}%s`;
+export const COMMIT_FORMAT = `${RECORD_SEP}%H${FIELD_SEP}%h${FIELD_SEP}%aN${FIELD_SEP}%aI${FIELD_SEP}%s`;
 
 /**
  * Same as {@link COMMIT_FORMAT} plus the author email, used only to recognize one
@@ -110,14 +111,17 @@ function splitRecords(stdout: string): string[] {
   return stdout.split(RECORD_SEP).filter((record) => record.trim().length > 0);
 }
 
+/** Index of the first field after the {@link COMMIT_FORMAT} header fields. */
+const EXTRA_FIELD = 5;
+
 function parseHeader(fields: string[]): Commit | null {
-  const [hash, author, date, subject] = fields;
+  const [hash, shortHash, author, date, subject] = fields;
   if (!hash || !/^[0-9a-f]{40,64}$/.test(hash) || date === undefined) {
     return null;
   }
   return {
     hash,
-    shortHash: hash.slice(0, 7),
+    shortHash: shortHash && hash.startsWith(shortHash) ? shortHash : hash.slice(0, 7),
     author: author ?? '',
     date,
     subject: subject ?? '',
@@ -138,7 +142,7 @@ export function parseCommits(stdout: string): Commit[] {
   for (const record of splitRecords(stdout)) {
     const fields = record.trim().split(FIELD_SEP);
     const header = parseHeader(fields);
-    if (header) commits.push(withAuthorKey(header, fields[4]));
+    if (header) commits.push(withAuthorKey(header, fields[EXTRA_FIELD]));
   }
   return commits;
 }
@@ -151,7 +155,7 @@ export function parseCommitsWithBody(stdout: string): CommitWithBody[] {
     const fields = record.replace(/^\n+/, '').split(FIELD_SEP);
     const header = parseHeader(fields);
     if (header) {
-      commits.push({ ...header, body: (fields[4] ?? '').trim() });
+      commits.push({ ...header, body: (fields[EXTRA_FIELD] ?? '').trim() });
     }
   }
   return commits;
@@ -174,7 +178,7 @@ export function parseCommitsWithNumstat(stdout: string): CommitWithFiles[] {
     const headerFields = headerLine.split(FIELD_SEP);
     const parsed = parseHeader(headerFields);
     if (!parsed) continue;
-    const header = withAuthorKey(parsed, headerFields[4]);
+    const header = withAuthorKey(parsed, headerFields[EXTRA_FIELD]);
 
     const files: FileChange[] = [];
     for (const line of statLines) {
@@ -211,7 +215,7 @@ export function parseCommitsWithNameStatus(stdout: string): CommitWithStatus[] {
       if (status.length === 0 || path.length === 0) continue;
       files.push({ status, path });
     }
-    commits.push({ ...withAuthorKey(parsed, headerFields[4]), files });
+    commits.push({ ...withAuthorKey(parsed, headerFields[EXTRA_FIELD]), files });
   }
   return commits;
 }

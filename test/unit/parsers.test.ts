@@ -16,7 +16,7 @@ const HASH_B = 'b'.repeat(40);
 
 describe('parseCommits', () => {
   it('parses records separated by control characters', () => {
-    const out = `${R}${HASH_A}${F}Alice Example${F}2026-01-10T10:00:00+01:00${F}feat: add x\n${R}${HASH_B}${F}Bob Example${F}2026-01-09T09:00:00Z${F}fix: subject with | pipes\tand tabs\n`;
+    const out = `${R}${HASH_A}${F}aaaaaaa${F}Alice Example${F}2026-01-10T10:00:00+01:00${F}feat: add x\n${R}${HASH_B}${F}bbbbbbbbb${F}Bob Example${F}2026-01-09T09:00:00Z${F}fix: subject with | pipes\tand tabs\n`;
     expect(parseCommits(out)).toEqual([
       {
         hash: HASH_A,
@@ -27,7 +27,7 @@ describe('parseCommits', () => {
       },
       {
         hash: HASH_B,
-        shortHash: 'bbbbbbb',
+        shortHash: 'bbbbbbbbb', // git's %h, longer when the repository needs it
         author: 'Bob Example',
         date: '2026-01-09T09:00:00Z',
         subject: 'fix: subject with | pipes\tand tabs',
@@ -42,7 +42,7 @@ describe('parseCommits', () => {
 
   it('turns the email field into an opaque author key', () => {
     const record = (email: string) =>
-      `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}feat: x${F}${email}\n`;
+      `${R}${HASH_A}${F}aaaaaaa${F}Alice${F}2026-01-10T10:00:00Z${F}feat: x${F}${email}\n`;
     const [commit] = parseCommits(record('Alice@Example.com'));
     expect(commit?.authorKey).toMatch(/^[0-9a-f]{16}$/);
     expect(JSON.stringify(commit)).not.toContain('@');
@@ -61,14 +61,14 @@ describe('parseCommits', () => {
 
 describe('parseCommitsWithBody', () => {
   it('keeps multi-line bodies', () => {
-    const out = `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}feat!: drop v1${F}Long text.\n\nBREAKING CHANGE: v1 removed\n\n`;
+    const out = `${R}${HASH_A}${F}aaaaaaa${F}Alice${F}2026-01-10T10:00:00Z${F}feat!: drop v1${F}Long text.\n\nBREAKING CHANGE: v1 removed\n\n`;
     const [commit] = parseCommitsWithBody(out);
     expect(commit?.subject).toBe('feat!: drop v1');
     expect(commit?.body).toBe('Long text.\n\nBREAKING CHANGE: v1 removed');
   });
 
   it('handles an empty body', () => {
-    const out = `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}chore: x${F}\n`;
+    const out = `${R}${HASH_A}${F}aaaaaaa${F}Alice${F}2026-01-10T10:00:00Z${F}chore: x${F}\n`;
     expect(parseCommitsWithBody(out)[0]?.body).toBe('');
   });
 });
@@ -76,12 +76,12 @@ describe('parseCommitsWithBody', () => {
 describe('parseCommitsWithNumstat', () => {
   it('attaches file stats, including binary files and paths with spaces', () => {
     const out = [
-      `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}feat: x`,
+      `${R}${HASH_A}${F}aaaaaaa${F}Alice${F}2026-01-10T10:00:00Z${F}feat: x`,
       '',
       '10\t2\tsrc/index.ts',
       '-\t-\tassets/logo.png',
       '3\t0\tdocs/my notes.md',
-      `${R}${HASH_B}${F}Bob${F}2026-01-09T10:00:00Z${F}chore: empty`,
+      `${R}${HASH_B}${F}bbbbbbbbb${F}Bob${F}2026-01-09T10:00:00Z${F}chore: empty`,
       '',
     ].join('\n');
 
@@ -99,12 +99,12 @@ describe('parseCommitsWithNumstat', () => {
 describe('parseCommitsWithNameStatus', () => {
   it('attaches file statuses, including paths with spaces and tabs', () => {
     const out = [
-      `${R}${HASH_A}${F}Alice${F}2026-01-10T10:00:00Z${F}refactor: move${F}alice@example.com`,
+      `${R}${HASH_A}${F}aaaaaaa${F}Alice${F}2026-01-10T10:00:00Z${F}refactor: move${F}alice@example.com`,
       '',
       'D\tsrc/old.ts',
       'A\tlib/new name.ts',
       'M\tweird\tname.md',
-      `${R}${HASH_B}${F}Bob${F}2026-01-09T10:00:00Z${F}chore: empty`,
+      `${R}${HASH_B}${F}bbbbbbbbb${F}Bob${F}2026-01-09T10:00:00Z${F}chore: empty`,
       '',
     ].join('\n');
     const [a, b] = parseCommitsWithNameStatus(out);
