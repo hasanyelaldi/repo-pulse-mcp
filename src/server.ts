@@ -7,7 +7,7 @@ import type { GitRunner } from './git/runner.js';
 import { ALL_TOOLS } from './toolsets.js';
 
 export const SERVER_NAME = 'repo-pulse-mcp';
-export const SERVER_VERSION = '0.4.2';
+export const SERVER_VERSION = '0.5.0';
 
 export interface ServerDeps {
   registry: RepoRegistry;

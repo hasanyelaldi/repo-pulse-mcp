@@ -1,6 +1,6 @@
 {
   "name": "repo-pulse-mcp",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Read-only MCP server that turns local git history into answers: PR review context, bug hotspots, code ownership and bus factor, change coupling and release notes.",
   "mcpName": "io.github.hasanyelaldi/repo-pulse-mcp",
   "type": "module",
