@@ -38,8 +38,9 @@ Requires Node.js 22.12+ and git. There is nothing to clone or build: the server 
 claude mcp add repo-pulse -- npx -y repo-pulse-mcp --repo "$PWD"
 ```
 
-Then ask _"What changed since the last release?"_ or _"Review my branch against main."_ For Claude
-Desktop and other MCP clients, see [Installation](#installation).
+Then ask _"What changed since the last release?"_, or review your branch with the built-in prompt:
+`/mcp__repo-pulse__review_branch main`. For Claude Desktop and other MCP clients, see
+[Installation](#installation).
 
 ## Features
 
@@ -80,10 +81,11 @@ Desktop and other MCP clients, see [Installation](#installation).
 
 ### 📦 Also included
 
-| Kind     | Name                        | What it does                                                       |
-| -------- | --------------------------- | ------------------------------------------------------------------ |
-| Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts  |
-| Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update |
+| Kind     | Name                        | What it does                                                                       |
+| -------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts                  |
+| Prompt   | `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist |
+| Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
 `structuredContent` and a JSON text block for older clients. Full inputs and outputs are in the
@@ -237,8 +239,9 @@ npx -y repo-pulse-mcp --repo ~/code/my-app --tools review,list_tags
 REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 ```
 
-An unknown name stops the server at startup with the list of valid names. The
-`weekly_engineering_update` prompt is only offered when the four tools it uses are enabled.
+An unknown name stops the server at startup with the list of valid names. Prompts follow the
+tools: `review_branch` needs `review_context`, and `weekly_engineering_update` needs the four tools
+it uses.
 
 ### Claude Code
 
@@ -538,6 +541,21 @@ One resource per configured repository (listed via `resources/list`, name comple
   "tagCount": 9
 }
 ```
+
+### Prompt: `review_branch`
+
+Arguments (strings): `base` (required, e.g. `main`), `head` (default `HEAD`), `repo`. In Claude Code
+it is a slash command:
+
+```
+/mcp__repo-pulse__review_branch main feature/search
+```
+
+It tells the model to call `review_context` (and `compare_refs`, when that tool is enabled) and
+write a review briefing: summary, risky files, possibly missing files, suggested reviewers and a
+checklist of things to verify. It also tells the model that repo-pulse returns history, not the
+diff, so the briefing does not claim to have read the code. Available whenever `review_context` is
+enabled.
 
 ### Prompt: `weekly_engineering_update`
 
