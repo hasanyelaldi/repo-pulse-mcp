@@ -11,6 +11,14 @@ describe('parseRepoPaths', () => {
     expect(paths).toEqual(['/a', '/b', '/c', '/d']);
   });
 
+  it('reads plain positional paths, in order, and ignores other flags', () => {
+    expect(parseRepoPaths(['/a', '--verbose', '--repo', '/b', '/c'], {})).toEqual([
+      '/a',
+      '/b',
+      '/c',
+    ]);
+  });
+
   it('returns nothing when unconfigured', () => {
     expect(parseRepoPaths([], {})).toEqual([]);
   });

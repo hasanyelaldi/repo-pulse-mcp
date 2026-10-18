@@ -14,8 +14,10 @@ export interface Repository {
 
 /**
  * Collects repository paths from `--repo <path>` / `--repo=<path>` CLI
- * arguments and the {@link REPOS_ENV_VAR} environment variable (entries
- * separated by the platform path delimiter, ":" on macOS/Linux).
+ * arguments, plain positional arguments (`repo-pulse-mcp ~/a ~/b`, the form
+ * container catalogs pass mounted paths in) and the {@link REPOS_ENV_VAR}
+ * environment variable (entries separated by the platform path delimiter,
+ * ":" on macOS/Linux). Other flags are ignored.
  */
 export function parseRepoPaths(argv: readonly string[], env: NodeJS.ProcessEnv): string[] {
   const paths: string[] = [];
@@ -30,6 +32,8 @@ export function parseRepoPaths(argv: readonly string[], env: NodeJS.ProcessEnv):
       i++;
     } else if (arg.startsWith('--repo=')) {
       paths.push(arg.slice('--repo='.length));
+    } else if (!arg.startsWith('-')) {
+      paths.push(arg);
     }
   }
   for (const entry of (env[REPOS_ENV_VAR] ?? '').split(delimiter)) {

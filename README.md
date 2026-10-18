@@ -201,6 +201,8 @@ repositories you explicitly allow. Pass them as CLI arguments or an environment 
 
 ```bash
 npx -y repo-pulse-mcp --repo ~/code/my-app --repo ~/code/my-lib
+# or, as plain arguments
+npx -y repo-pulse-mcp ~/code/my-app ~/code/my-lib
 # or
 REPO_PULSE_REPOS=~/code/my-app:~/code/my-lib npx -y repo-pulse-mcp
 ```
