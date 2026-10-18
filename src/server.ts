@@ -6,7 +6,7 @@ import { SECTIONS } from './core/release-notes.js';
 import type { GitRunner } from './git/runner.js';
 
 export const SERVER_NAME = 'repo-pulse-mcp';
-export const SERVER_VERSION = '0.4.1';
+export const SERVER_VERSION = '0.4.2';
 
 export interface ServerDeps {
   registry: RepoRegistry;
