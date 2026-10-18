@@ -24,6 +24,9 @@ const GLOBAL_ARGS = [
   // A repository's own config could point fsmonitor at an arbitrary program.
   '-c',
   'core.fsmonitor=false',
+  // Print non-ASCII paths as-is instead of as quoted octal escapes.
+  '-c',
+  'core.quotePath=false',
 ];
 
 function buildEnv(): NodeJS.ProcessEnv {

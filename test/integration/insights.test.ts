@@ -7,10 +7,12 @@ import {
   createAliasRepo,
   createCouplingRepo,
   createFixRepo,
+  createMergeRepo,
   createFixtureRepo,
   createPlainDir,
   createRenameRepo,
   createReviewRepo,
+  createUnicodeRepo,
   NOW,
   type TempRepo,
 } from './fixture.js';
@@ -763,6 +765,100 @@ describe('author identity', () => {
       expect(json).not.toContain('@');
       expect(json).not.toContain('authorKey');
     }
+  });
+});
+
+describe('codeAge', () => {
+  const defaults = { inactiveDays: 180, minAgeDays: 0, limit: 20 };
+
+  it('ages the files on HEAD and summarizes them by directory', async () => {
+    const result = await insights.codeAge(repo.path, defaults);
+    expect(result).toMatchObject({
+      path: null,
+      commitsScanned: 7,
+      scanTruncated: false,
+      filesOnHead: 5,
+      medianAgeDays: 3,
+      inactiveAuthorFiles: 0,
+    });
+    expect(result.files.map((f) => [f.path, f.ageDays, f.lastAuthor])).toEqual([
+      ['src/api.ts', 20, 'Alice Example'],
+      ['config.json', 5, 'Alice Example'],
+      ['README.md', 3, 'Carol Example'],
+      ['src/app.ts', 2, 'Alice Example'],
+      ['package.json', 1, 'Bob Example'],
+    ]);
+    expect(result.files.find((f) => f.path === 'src/app.ts')?.commits).toBe(4);
+    expect(result.directories).toEqual([
+      { path: 'src/', files: 2, medianAgeDays: 11, newestAgeDays: 2 },
+      { path: '.', files: 3, medianAgeDays: 3, newestAgeDays: 1 },
+    ]);
+    expect(result.ageBuckets[0]).toEqual({ label: 'under 30 days', files: 5 });
+  });
+
+  it('filters by path, minimum age and exclude globs', async () => {
+    const result = await insights.codeAge(repo.path, { ...defaults, path: 'src', minAgeDays: 3 });
+    expect(result.filesOnHead).toBe(2);
+    expect(result.files.map((f) => f.path)).toEqual(['src/api.ts']);
+    expect(result.directories.map((d) => d.path)).toEqual(['src/']);
+
+    const noJson = await insights.codeAge(repo.path, { ...defaults, exclude: ['*.json'] });
+    expect(noJson.filesOnHead).toBe(3);
+  });
+
+  it('leaves out deleted and renamed-away files', async () => {
+    const renameRepo = await createRenameRepo();
+    try {
+      const result = await insights.codeAge(renameRepo.path, defaults);
+      expect(result.files.map((f) => [f.path, f.ageDays, f.commits])).toEqual([
+        ['lib/helpers.ts', 2, 2],
+        ['NOTES.md', 1, 1],
+      ]);
+    } finally {
+      await renameRepo.cleanup();
+    }
+  });
+
+  it('follows files that a merge added or deleted, and flags inactive authors', async () => {
+    const mergeRepo = await createMergeRepo();
+    try {
+      // Half a day later, so no commit sits exactly on the activity cutoff.
+      const later = new RepoInsights({
+        runGit,
+        now: () => new Date(NOW.getTime() + 12 * 3600_000),
+      });
+      const result = await later.codeAge(mergeRepo.path, { ...defaults, inactiveDays: 3 });
+      expect(
+        result.files.map((f) => [f.path, f.ageDays, f.lastAuthor, f.lastAuthorActive]),
+      ).toEqual([
+        ['a.ts', 6, 'Alice Example', true],
+        ['c.ts', 4, 'Bob Example', false],
+        ['README.md', 3, 'Carol Example', false],
+        ['merge-only.ts', 2, 'Alice Example', true],
+      ]);
+      expect(result.inactiveAuthorFiles).toBe(2);
+    } finally {
+      await mergeRepo.cleanup();
+    }
+  });
+
+  it('returns non-ASCII paths as they are, not as quoted escapes', async () => {
+    const unicodeRepo = await createUnicodeRepo();
+    try {
+      const expected = ['docs/çözüm notları.md', 'docs/テスト.md'];
+      const ages = await insights.codeAge(unicodeRepo.path, defaults);
+      expect(ages.files.map((f) => f.path).sort()).toEqual(expected);
+      const hotspots = await insights.fileHotspots(unicodeRepo.path, { days: 30, limit: 10 });
+      expect(hotspots.hotspots.map((h) => h.path).sort()).toEqual(expected);
+    } finally {
+      await unicodeRepo.cleanup();
+    }
+  });
+
+  it('rejects unsafe paths', async () => {
+    await expect(insights.codeAge(repo.path, { ...defaults, path: '../x' })).rejects.toThrow(
+      InputError,
+    );
   });
 });
 

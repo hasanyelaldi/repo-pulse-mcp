@@ -43,7 +43,7 @@ Desktop and other MCP clients, see [Installation](#installation).
 
 ## Features
 
-12 tools, grouped by the question they answer. 🆕 marks the newest ones.
+13 tools, grouped by the question they answer. 🆕 marks the newest ones.
 
 ### 🔍 Code review and risk
 
@@ -58,6 +58,7 @@ Desktop and other MCP clients, see [Installation](#installation).
 | Tool                  | What it answers                                                                                                     |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `knowledge_map` 🆕    | Who knows a file or directory, weighted toward recent work, plus the bus factor and files that depend on one person |
+| `code_age` 🆕         | How long ago each file last changed, the oldest directories and files whose last author has left                    |
 | `contributor_summary` | Commits per author in a time window, optionally for one path                                                        |
 
 ### 🚀 Releases and branches
@@ -104,6 +105,12 @@ All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and ret
 > holds 72% of the recent knowledge and is the main owner of 11 of 14 files; 9 of them depend on
 > her alone. Bob is a distant second at 18%. Pairing Bob with Carol on the next billing change
 > would spread the knowledge…
+
+> **You:** Which parts of the code has nobody touched in a long time?
+>
+> **Assistant** _(calls `code_age` with `minAgeDays: 365`)_: Half of the files haven't changed in
+> 18 months. `src/legacy/` is the oldest directory (median 3.2 years), and 41 of its files were
+> last changed by people who no longer commit here. That's where knowledge is being lost…
 
 > **You:** Where is the churn this quarter, and what keeps breaking?
 >
@@ -185,7 +192,7 @@ only a read-only shell and once with only repo-pulse. Full method, answers and c
 
 The benchmark was run with v0.3.0 (10 tools). The honest summary: repo-pulse is not cheaper in
 tokens for simple one-off questions, because a good model writes compact shell pipelines and
-repo-pulse's tool definitions cost tokens in every session (about 3.5k for the current 12 tools). It wins on multi-step questions, on getting the numbers right, and in clients that have
+repo-pulse's tool definitions cost tokens in every session (about 4k for the current 13 tools). It wins on multi-step questions, on getting the numbers right, and in clients that have
 no shell at all.
 
 ## Requirements
@@ -359,6 +366,31 @@ years ago. Line counts are ignored so generated or reformatted diffs do not domi
 of the knowledge in the area; `concentratedFiles` counts files where one author holds at least
 80%. `files` lists the most frequently changed files first with their main owner, which makes it
 a quick reviewer suggestion for a path. Merge commits are excluded and renames are not followed.
+
+### `code_age`
+
+| Input          | Type     | Default | Notes                                                     |
+| -------------- | -------- | ------- | --------------------------------------------------------- |
+| `path`         | string   | –       | A file or subtree; omit for the whole repository          |
+| `minAgeDays`   | integer  | 0       | Only list files at least this old; the summary covers all |
+| `inactiveDays` | integer  | 180     | An author with no commit for this long counts as inactive |
+| `exclude`      | string[] | –       | Up to 20 globs to skip, same syntax as `file_hotspots`    |
+| `limit`        | integer  | 20      | 1–100, applies to `directories` and `files` separately    |
+
+Output: `{ repo, path, inactiveDays, commitsScanned, scanTruncated, filesOnHead, medianAgeDays, ageBuckets: [{ label, files }], inactiveAuthorFiles, directories: [{ path, files, medianAgeDays, newestAgeDays }], files: [{ path, lastChanged, ageDays, lastAuthor, lastAuthorActive, commits }] }`
+
+Every file on `HEAD` gets the date and author of the last non-merge commit that changed it.
+`ageBuckets` splits the files into under 30 days, 30–90 days, 90 days–1 year, 1–2 years and over
+2 years. `directories` groups files by the first directory level below `path` (`.` for files
+directly in it), oldest median first, which shows the parts of the code nobody works on any more.
+`lastAuthorActive` is `false` when that person has not committed anywhere in the repository for
+`inactiveDays`, merges included; `inactiveAuthorFiles` counts those files, a rough measure of
+knowledge that has left. People who commit under several names with one email are counted once.
+
+Which files are on `HEAD` comes from additions and deletions along the first-parent history, so
+files that a merge added or deleted by itself are handled correctly. History is read up to 20,000
+commits; beyond that `scanTruncated` is `true` and files last changed before the cut-off are
+missing.
 
 ### `contributor_summary`
 
@@ -582,9 +614,9 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
-- Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map` and
-  `review_context`.
-- Each session pays about 3.5k tokens for the tool definitions, and `release_notes_draft`
+- Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map`,
+  `review_context` and `code_age`: a renamed file counts as new from the rename on.
+- Each session pays about 4k tokens for the tool definitions, and `release_notes_draft`
   returns its content both as sections and as Markdown, so on simple questions a shell can be
   cheaper (see [Benchmark](#benchmark)).
 - Possible next steps: a leaner `release_notes_draft` output, an HTTP transport for team use.

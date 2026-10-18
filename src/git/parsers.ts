@@ -39,6 +39,16 @@ export interface CommitWithFiles extends Commit {
   files: FileChange[];
 }
 
+export interface FileStatus {
+  /** git status letter: A (added), M (modified), D (deleted), T (type changed)... */
+  status: string;
+  path: string;
+}
+
+export interface CommitWithStatus extends Commit {
+  files: FileStatus[];
+}
+
 export interface BranchRef {
   name: string;
   lastCommitDate: string;
@@ -176,6 +186,32 @@ export function parseCommitsWithNumstat(stdout: string): CommitWithFiles[] {
       files.push({ path, additions: parseCount(added), deletions: parseCount(deleted) });
     }
     commits.push({ ...header, files });
+  }
+  return commits;
+}
+
+/**
+ * Parses output produced with `--format=` {@link COMMIT_FORMAT} or
+ * {@link COMMIT_WITH_EMAIL_FORMAT}, plus `--name-status --no-renames` (so
+ * there are no two-path rename or copy lines).
+ */
+export function parseCommitsWithNameStatus(stdout: string): CommitWithStatus[] {
+  const commits: CommitWithStatus[] = [];
+  for (const record of splitRecords(stdout)) {
+    const [headerLine = '', ...statusLines] = record.trim().split('\n');
+    const headerFields = headerLine.split(FIELD_SEP);
+    const parsed = parseHeader(headerFields);
+    if (!parsed) continue;
+
+    const files: FileStatus[] = [];
+    for (const line of statusLines) {
+      // name-status lines are "<status>\t<path>"; the path may contain tabs.
+      const [status = '', ...pathParts] = line.split('\t');
+      const path = pathParts.join('\t');
+      if (status.length === 0 || path.length === 0) continue;
+      files.push({ status, path });
+    }
+    commits.push({ ...withAuthorKey(parsed, headerFields[4]), files });
   }
   return commits;
 }

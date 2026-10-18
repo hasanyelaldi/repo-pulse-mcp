@@ -316,6 +316,49 @@ const reviewContextOutput = z.object({
     .describe('Who knows the changed files best, excluding the change authors.'),
 });
 
+const codeAgeOutput = z.object({
+  repo: repoOutputField,
+  path: z
+    .string()
+    .nullable()
+    .describe('The requested file or directory, or null for the whole repo.'),
+  inactiveDays: z.number(),
+  commitsScanned: z.number(),
+  scanTruncated: z
+    .boolean()
+    .describe('True if history was cut off; files last changed before the cut-off are missing.'),
+  filesOnHead: z.number().describe('Files on HEAD in the area, after exclude.'),
+  medianAgeDays: z.number().nullable(),
+  ageBuckets: z.array(z.object({ label: z.string(), files: z.number() })),
+  inactiveAuthorFiles: z
+    .number()
+    .describe('Files whose last author has not committed anywhere in the last inactiveDays.'),
+  directories: z
+    .array(
+      z.object({
+        path: z
+          .string()
+          .describe('First directory level below path; "." for files directly in it.'),
+        files: z.number(),
+        medianAgeDays: z.number(),
+        newestAgeDays: z.number().describe('Age of the most recently changed file.'),
+      }),
+    )
+    .describe('Oldest (highest median age) first.'),
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        lastChanged: z.string(),
+        ageDays: z.number(),
+        lastAuthor: z.string(),
+        lastAuthorActive: z.boolean().describe('Committed anywhere in the last inactiveDays.'),
+        commits: z.number().describe('Non-merge commits that touched the file.'),
+      }),
+    )
+    .describe('Oldest first, at least minAgeDays old.'),
+});
+
 const contributorSummaryOutput = z.object({
   repo: repoOutputField,
   windowDays: z.number(),
@@ -744,6 +787,49 @@ export function createServer({ registry, runGit, now }: ServerDeps): McpServer {
     async ({ repo, ...opts }) => {
       const r = await registry.resolve(repo);
       return toolResult({ repo: r.name, ...(await insights.reviewContext(r.path, opts)) });
+    },
+  );
+
+  server.registerTool(
+    'code_age',
+    {
+      title: 'Code age',
+      description:
+        'How long ago each file on HEAD last changed, oldest first, with its last author and ' +
+        'whether that author still commits to the repository. Also returns an age histogram, ' +
+        'the median age per directory and how many files were last touched by someone who has ' +
+        'left. Useful for "which parts of the code nobody touches any more?" and "where are we ' +
+        'losing knowledge?".',
+      inputSchema: z.object({
+        repo: repoField,
+        path: z.string().max(500).optional().describe('Restrict to this file or directory.'),
+        minAgeDays: z
+          .number()
+          .int()
+          .min(0)
+          .max(36500)
+          .default(0)
+          .describe('Only list files at least this many days old (the summary covers all files).'),
+        inactiveDays: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .default(180)
+          .describe('An author with no commit in this many days counts as inactive.'),
+        exclude: z
+          .array(z.string().min(1).max(200))
+          .max(20)
+          .optional()
+          .describe('Glob patterns for files to leave out, same syntax as in file_hotspots.'),
+        limit: limitField(20, 100),
+      }),
+      outputSchema: codeAgeOutput,
+      annotations: READ_ONLY,
+    },
+    async ({ repo, ...opts }) => {
+      const r = await registry.resolve(repo);
+      return toolResult({ repo: r.name, ...(await insights.codeAge(r.path, opts)) });
     },
   );
 

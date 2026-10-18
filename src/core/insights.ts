@@ -7,6 +7,7 @@ import {
   parseBranches,
   parseCommits,
   parseCommitsWithBody,
+  parseCommitsWithNameStatus,
   parseCommitsWithNumstat,
   parseTags,
   renamedPath,
@@ -33,6 +34,9 @@ import {
 export const MAX_COMMITS_SCANNED = 5_000;
 export const MAX_RELEASE_COMMITS = 500;
 export const MAX_REVIEW_COMMITS = 500;
+// code_age has to reach the commit that last touched the oldest file, so it
+// reads further back than the other scans; name-status output stays small.
+export const MAX_AGE_COMMITS = 20_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -83,6 +87,24 @@ function authorNames(commits: readonly Commit[]): (commit: Commit) => string {
     if (c.authorKey !== undefined && !names.has(c.authorKey)) names.set(c.authorKey, c.author);
   }
   return (c) => (c.authorKey === undefined ? c.author : (names.get(c.authorKey) ?? c.author));
+}
+
+/** Age buckets for code_age, as [label, upper bound in days]. */
+const AGE_BUCKETS: ReadonlyArray<readonly [string, number]> = [
+  ['under 30 days', 30],
+  ['30-90 days', 90],
+  ['90 days-1 year', 365],
+  ['1-2 years', 730],
+  ['over 2 years', Infinity],
+];
+
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[mid] ?? 0)
+    : Math.round(((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2);
 }
 
 function pathspec(path: string | undefined): string[] {
@@ -894,6 +916,149 @@ export class RepoInsights {
       files: files.slice(0, opts.limit),
       missingCompanions: missingCompanions.slice(0, opts.limit),
       reviewers: reviewers.slice(0, opts.limit),
+    };
+  }
+
+  /**
+   * How long ago each file on HEAD last changed, and whether its last author
+   * still commits to the repository. git log is newest-first, so the first
+   * time a path shows up is its latest change.
+   *
+   * Which files are on HEAD comes from adds and deletes along the first-parent
+   * chain, compared with the first parent at merges, because a merge can add
+   * or delete files by itself. Ages and authors come from non-merge commits,
+   * so a file is credited to whoever wrote the change, not whoever merged it.
+   */
+  async codeAge(
+    repoPath: string,
+    opts: {
+      inactiveDays: number;
+      minAgeDays: number;
+      limit: number;
+      path?: string;
+      exclude?: string[];
+    },
+  ) {
+    const isExcluded = compileExcludes(opts.exclude);
+    const path = opts.path === undefined ? null : validateRepoPath(opts.path);
+    const now = this.now();
+    const pathArgs = path === null ? [] : ['--', path];
+    const [mainlineOut, historyOut, recentOut] = await Promise.all([
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
+        '--first-parent',
+        '-m',
+        '--name-status',
+        '--no-renames',
+        '--diff-filter=AD',
+        '--no-ext-diff',
+        `--max-count=${MAX_AGE_COMMITS}`,
+        'HEAD',
+        ...pathArgs,
+      ]),
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
+        '--name-status',
+        '--no-renames',
+        '--no-merges',
+        '--no-ext-diff',
+        `--max-count=${MAX_AGE_COMMITS}`,
+        'HEAD',
+        ...pathArgs,
+      ]),
+      // Activity anywhere in the repository counts, not only under path, and
+      // so do merges: a maintainer who only merges is still around.
+      this.runGit(repoPath, [
+        'log',
+        `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
+        sinceArg(opts.inactiveDays, now),
+        'HEAD',
+      ]),
+    ]);
+    const mainline = parseCommitsWithNameStatus(mainlineOut);
+    const history = parseCommitsWithNameStatus(historyOut);
+    const recent = parseCommits(recentOut);
+    const nameOf = authorNames([...recent, ...history, ...mainline]);
+    const identity = (c: Commit) => c.authorKey ?? c.author;
+    const active = new Set(recent.map(identity));
+
+    // Newest add or delete of each path decides whether it is on HEAD.
+    const onHead = new Map<string, Commit>();
+    const gone = new Set<string>();
+    for (const commit of mainline) {
+      for (const file of commit.files) {
+        if (isExcluded(file.path) || onHead.has(file.path) || gone.has(file.path)) continue;
+        if (file.status === 'D') gone.add(file.path);
+        else onHead.set(file.path, commit);
+      }
+    }
+
+    const seen = new Map<string, { last: Commit; commits: number }>();
+    for (const commit of history) {
+      for (const file of commit.files) {
+        if (!onHead.has(file.path)) continue;
+        const entry = seen.get(file.path);
+        if (entry) entry.commits += 1;
+        else seen.set(file.path, { last: commit, commits: 1 });
+      }
+    }
+
+    const files = [...onHead.entries()]
+      // A file only ever touched by a merge is credited to that merge.
+      .map(
+        ([filePath, added]) =>
+          [filePath, seen.get(filePath) ?? { last: added, commits: 1 }] as const,
+      )
+      .map(([filePath, f]) => ({
+        path: filePath,
+        lastChanged: f.last.date,
+        ageDays: Math.floor((now.getTime() - new Date(f.last.date).getTime()) / DAY_MS),
+        lastAuthor: nameOf(f.last),
+        lastAuthorActive: active.has(identity(f.last)),
+        commits: f.commits,
+      }))
+      .sort((a, b) => b.ageDays - a.ageDays || a.path.localeCompare(b.path));
+
+    // Group by the first directory level below path ("." for files directly in it).
+    const prefix = path === null ? '' : `${path.replace(/\/+$/, '')}/`;
+    const groups = new Map<string, number[]>();
+    for (const f of files) {
+      const rel = f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path;
+      const slash = rel.indexOf('/');
+      const dir =
+        slash === -1 ? (prefix === '' ? '.' : prefix) : `${prefix}${rel.slice(0, slash)}/`;
+      groups.set(dir, [...(groups.get(dir) ?? []), f.ageDays]);
+    }
+    const directories = [...groups.entries()]
+      .map(([dir, ages]) => ({
+        path: dir,
+        files: ages.length,
+        medianAgeDays: median(ages) ?? 0,
+        newestAgeDays: Math.min(...ages),
+      }))
+      .sort((a, b) => b.medianAgeDays - a.medianAgeDays || a.path.localeCompare(b.path));
+
+    const ages = files.map((f) => f.ageDays);
+    let lower = 0;
+    const ageBuckets = AGE_BUCKETS.map(([label, upper]) => {
+      const count = ages.filter((a) => a >= lower && a < upper).length;
+      lower = upper;
+      return { label, files: count };
+    });
+
+    return {
+      path,
+      inactiveDays: opts.inactiveDays,
+      commitsScanned: history.length,
+      scanTruncated: history.length >= MAX_AGE_COMMITS || mainline.length >= MAX_AGE_COMMITS,
+      filesOnHead: files.length,
+      medianAgeDays: median(ages),
+      ageBuckets,
+      inactiveAuthorFiles: files.filter((f) => !f.lastAuthorActive).length,
+      directories: directories.slice(0, opts.limit),
+      files: files.filter((f) => f.ageDays >= opts.minAgeDays).slice(0, opts.limit),
     };
   }
 
