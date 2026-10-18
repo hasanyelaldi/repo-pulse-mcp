@@ -31,6 +31,12 @@ function git(cwd: string, args: string[], env: Record<string, string> = {}): str
       // Isolate from the developer's own git config (signing, hooks, templates...).
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_NOSYSTEM: '1',
+      // Commands such as merge need an identity too. macOS guesses one from the
+      // user and host name, Linux CI runners cannot, so never rely on guessing.
+      GIT_AUTHOR_NAME: 'Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.com',
+      GIT_COMMITTER_NAME: 'Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.com',
       ...env,
     },
   });
