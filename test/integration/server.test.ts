@@ -140,8 +140,19 @@ describe('MCP server', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       ['change_coupling', 'file_hotspots', 'list_tags', 'review_context'].sort(),
     );
-    expect(review.getServerCapabilities()?.prompts).toBeUndefined();
+    // review_branch only needs review_context; compare_refs (releases) is not enabled.
+    expect((await review.listPrompts()).prompts.map((p) => p.name)).toEqual(['review_branch']);
+    const reviewText = (
+      (await review.getPrompt({ name: 'review_branch', arguments: { base: 'main' } })).messages[0]
+        ?.content as { text: string }
+    ).text;
+    expect(reviewText).toContain('review_context');
+    expect(reviewText).not.toContain('compare_refs');
     await review.close();
+
+    const history = await connect(['history']);
+    expect(history.getServerCapabilities()?.prompts).toBeUndefined();
+    await history.close();
 
     const weekly = await connect([
       'recent_activity',
@@ -155,9 +166,31 @@ describe('MCP server', () => {
     await weekly.close();
   });
 
+  it('serves the review branch prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'review_branch',
+      arguments: { base: 'main', head: 'merged-branch', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain('Review the changes in merged-branch against main');
+    expect(text).toContain(
+      `review_context (base: "main", head: "merged-branch", repo: "${repoName}")`,
+    );
+    expect(text).toContain('compare_refs');
+    expect(text).toContain('not the diff');
+
+    const defaults = await client.getPrompt({ name: 'review_branch', arguments: { base: 'main' } });
+    expect((defaults.messages[0]?.content as { text: string }).text).toContain('head: "HEAD"');
+
+    await expect(client.getPrompt({ name: 'review_branch', arguments: {} })).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
-    expect(prompts.map((p) => p.name)).toEqual(['weekly_engineering_update']);
+    expect(prompts.map((p) => p.name).sort()).toEqual([
+      'review_branch',
+      'weekly_engineering_update',
+    ]);
 
     const result = await client.getPrompt({
       name: 'weekly_engineering_update',

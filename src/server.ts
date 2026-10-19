@@ -983,5 +983,76 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns review_context into a slash command (e.g. /mcp__repo-pulse__review_branch in
+  // Claude Code), so people find the review briefing without knowing what to ask.
+  if (enabled('review_context')) {
+    server.registerPrompt(
+      'review_branch',
+      {
+        title: 'Review a branch',
+        description:
+          'Review briefing for a branch or pull request: risky files, files that may have been ' +
+          'forgotten, suggested reviewers and a checklist, from the git history of the base branch.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          base: z
+            .string()
+            .min(1)
+            .max(200)
+            .describe('Branch the changes would merge into, e.g. "main".'),
+          head: z.string().max(200).optional().describe('Branch with the changes (default HEAD).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ base, head, repo }) => {
+        const args = `base: "${base}", head: "${head ?? 'HEAD'}"${repo ? `, repo: "${repo}"` : ''}`;
+        const steps = [
+          `1. review_context (${args}) for risky files, missing companions and reviewers.`,
+        ];
+        // compare_refs is in another toolset; only mention it when the client can call it.
+        if (enabled('compare_refs')) {
+          steps.push(
+            `2. compare_refs (${args}) for how far the branch is ahead of and behind base.`,
+          );
+        }
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Review the changes in ${head ?? 'HEAD'} against ${base}${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps,
+                  '',
+                  'Then write a review briefing in Markdown with these sections:',
+                  '- **Summary**: commits, authors, files and lines changed' +
+                    (enabled('compare_refs') ? ', and whether the branch needs a rebase.' : '.'),
+                  '- **Risky files**: the changed files with the most fixes and changes on the base ' +
+                    'branch, and why that matters. Skip this section if no file has history.',
+                  '- **Possibly missing**: files that usually change together with a changed file but ' +
+                    'are not in this branch, with how strongly they are coupled. They may be fine to ' +
+                    'leave out; say what to check.',
+                  '- **Suggested reviewers**: the top two or three, with why. The change authors are ' +
+                    'already left out.',
+                  '- **Checklist**: three to five concrete things to verify, based on the above.',
+                  '',
+                  'repo-pulse returns history and metadata, not the diff: do not claim to have read the ' +
+                    'code, and do not invent anything the tool results do not support. Keep it under ' +
+                    '300 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }
