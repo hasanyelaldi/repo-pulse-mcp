@@ -85,6 +85,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | -------- | --------------------------- | ---------------------------------------------------------------------------------- |
 | Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts                  |
 | Prompt   | `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist |
+| Prompt   | `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -240,8 +241,8 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 ```
 
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
-tools: `review_branch` needs `review_context`, and `weekly_engineering_update` needs the four tools
-it uses.
+tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`, and
+`weekly_engineering_update` needs the four tools it uses.
 
 ### Claude Code
 
@@ -556,6 +557,20 @@ write a review briefing: summary, risky files, possibly missing files, suggested
 checklist of things to verify. It also tells the model that repo-pulse returns history, not the
 diff, so the briefing does not claim to have read the code. Available whenever `review_context` is
 enabled.
+
+### Prompt: `release_notes`
+
+Arguments (strings, all optional): `from` (default: the latest tag before `to`), `to` (default
+`HEAD`), `version`, `repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__release_notes
+```
+
+It tells the model to call `release_notes_draft` and rewrite the grouped commits as user-facing
+release notes: breaking changes first, then features and fixes, with internal chores left out.
+Without `version`, it also calls `list_tags` (when enabled) and suggests the next semver version.
+Available whenever `release_notes_draft` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 
