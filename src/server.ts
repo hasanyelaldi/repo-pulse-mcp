@@ -1054,5 +1054,87 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns release_notes_draft into a slash command that drafts polished notes for the next
+  // (or an existing) release, instead of the raw commit grouping.
+  if (enabled('release_notes_draft')) {
+    server.registerPrompt(
+      'release_notes',
+      {
+        title: 'Draft release notes',
+        description:
+          'Draft release notes for the commits since the last tag (or between two refs), grouped ' +
+          'into user-facing sections with breaking changes first.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          from: z
+            .string()
+            .max(200)
+            .optional()
+            .describe('Start ref, exclusive (default: the latest tag before "to").'),
+          to: z.string().max(200).optional().describe('End ref, inclusive (default HEAD).'),
+          version: z
+            .string()
+            .max(50)
+            .optional()
+            .describe('Version to use in the heading, e.g. "1.4.0".'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ from, to, version, repo }) => {
+        const args = [
+          from ? `from: "${from}"` : undefined,
+          `to: "${to ?? 'HEAD'}"`,
+          'format: "both"',
+          repo ? `repo: "${repo}"` : undefined,
+        ]
+          .filter(Boolean)
+          .join(', ');
+        const steps = [`1. release_notes_draft (${args}) for the commits grouped by type.`];
+        // list_tags is optional; it helps pick a version when none was given.
+        if (!version && enabled('list_tags')) {
+          steps.push(
+            `2. list_tags${repo ? ` (repo: "${repo}")` : ''} to see the previous version, so you ` +
+              'can suggest the next one.',
+          );
+        }
+        const range = from ? `${from}..${to ?? 'HEAD'}` : `the latest tag..${to ?? 'HEAD'}`;
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Draft release notes for the changes in ${range}${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps,
+                  '',
+                  'Then write the release notes in Markdown:',
+                  version
+                    ? `- Start with the heading "## ${version}".`
+                    : '- Start with a "## <version>" heading. Suggest the next version from the ' +
+                      'previous tag (semver: major for breaking changes, minor for features, ' +
+                      'otherwise patch), and say it is a suggestion.',
+                  '- **Breaking changes** first, if any, each with what users have to change.',
+                  '- Then **Features** and **Fixes**, rewritten as one short user-facing line each ' +
+                    '(what changed for the user, not how). Merge commits that describe the same change.',
+                  '- Leave out chores, CI, tests and refactors unless they affect users; mention ' +
+                    'them in one closing line if notable.',
+                  '',
+                  'Do not invent anything that is not supported by the tool results, and keep commit ' +
+                    'hashes out unless they add value.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }

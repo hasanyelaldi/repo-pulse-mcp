@@ -154,6 +154,16 @@ describe('MCP server', () => {
     expect(history.getServerCapabilities()?.prompts).toBeUndefined();
     await history.close();
 
+    const releases = await connect(['release_notes_draft']);
+    expect((await releases.listPrompts()).prompts.map((p) => p.name)).toEqual(['release_notes']);
+    const releasesText = (
+      (await releases.getPrompt({ name: 'release_notes', arguments: {} })).messages[0]?.content as {
+        text: string;
+      }
+    ).text;
+    expect(releasesText).not.toContain('list_tags');
+    await releases.close();
+
     const weekly = await connect([
       'recent_activity',
       'contributor_summary',
@@ -185,9 +195,32 @@ describe('MCP server', () => {
     await expect(client.getPrompt({ name: 'review_branch', arguments: {} })).rejects.toThrow();
   });
 
+  it('serves the release notes prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'release_notes',
+      arguments: { from: 'v1.0.0', to: 'main', version: '1.1.0', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain('changes in v1.0.0..main');
+    expect(text).toContain(
+      `release_notes_draft (from: "v1.0.0", to: "main", format: "both", repo: "${repoName}")`,
+    );
+    expect(text).toContain('"## 1.1.0"');
+    // A version was given, so there is nothing to look up in the tags.
+    expect(text).not.toContain('list_tags');
+
+    const defaults = await client.getPrompt({ name: 'release_notes', arguments: {} });
+    const defaultText = (defaults.messages[0]?.content as { text: string }).text;
+    expect(defaultText).toContain('the latest tag..HEAD');
+    expect(defaultText).toContain('release_notes_draft (to: "HEAD", format: "both")');
+    expect(defaultText).toContain('list_tags');
+    expect(defaultText).toContain('Suggest the next version');
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
+      'release_notes',
       'review_branch',
       'weekly_engineering_update',
     ]);
