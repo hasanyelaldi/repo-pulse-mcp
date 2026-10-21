@@ -1136,5 +1136,89 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns knowledge_map into a slash command for "where are we depending on one person?",
+  // adding code_age and file_hotspots when they are enabled.
+  if (enabled('knowledge_map')) {
+    server.registerPrompt(
+      'ownership_report',
+      {
+        title: 'Ownership report',
+        description:
+          'Report who owns a directory (or the whole repository), the bus factor, files that ' +
+          'depend on one person or on people who have left, and where to spread knowledge.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          path: z
+            .string()
+            .max(500)
+            .optional()
+            .describe('File or directory to report on (default: the whole repository).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ path, repo }) => {
+        const args = [path ? `path: "${path}"` : undefined, repo ? `repo: "${repo}"` : undefined]
+          .filter(Boolean)
+          .join(', ');
+        const call = (tool: string) => (args ? `${tool} (${args})` : tool);
+        const steps = [`${call('knowledge_map')} for the owners and the bus factor.`];
+        // code_age and file_hotspots are optional; each adds a section when enabled.
+        if (enabled('code_age')) {
+          steps.push(`${call('code_age')} for old code and files last touched by people who left.`);
+        }
+        if (enabled('file_hotspots')) {
+          steps.push(`${call('file_hotspots')} for the files that change and break most.`);
+        }
+        const sections = [
+          '- **Owners**: the top people and their share of the knowledge, in one line each.',
+          '- **Bus factor**: what it is, what it means here, and how many files depend on a ' +
+            'single person.',
+        ];
+        if (enabled('code_age')) {
+          sections.push(
+            '- **Knowledge at risk**: files and directories last changed by inactive authors, ' +
+              'and the oldest areas nobody touches.',
+          );
+        }
+        if (enabled('file_hotspots')) {
+          sections.push(
+            '- **Risky and concentrated**: hotspots that are also owned by one person; these ' +
+              'matter most.',
+          );
+        }
+        sections.push(
+          '- **Recommendations**: three to five concrete steps, such as who should pair with or ' +
+            'review whom, and which areas need documentation.',
+        );
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Write an ownership report for ${path ? `"${path}"` : 'the whole repository'}${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps.map((s, i) => `${i + 1}. ${s}`),
+                  '',
+                  'Then write the report in Markdown with these sections:',
+                  ...sections,
+                  '',
+                  'Knowledge here means commit history, not who understands the code best: say so ' +
+                    'once. Do not invent anything the tool results do not support, and keep it ' +
+                    'under 300 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }

@@ -86,6 +86,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts                  |
 | Prompt   | `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist |
 | Prompt   | `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           |
+| Prompt   | `ownership_report` 🆕       | Owners, bus factor and knowledge at risk for a directory, with next steps          |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -241,8 +242,9 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 ```
 
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
-tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`, and
-`weekly_engineering_update` needs the four tools it uses.
+tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
+`ownership_report` needs `knowledge_map`, and `weekly_engineering_update` needs the four tools it
+uses.
 
 ### Claude Code
 
@@ -571,6 +573,19 @@ It tells the model to call `release_notes_draft` and rewrite the grouped commits
 release notes: breaking changes first, then features and fixes, with internal chores left out.
 Without `version`, it also calls `list_tags` (when enabled) and suggests the next semver version.
 Available whenever `release_notes_draft` is enabled.
+
+### Prompt: `ownership_report`
+
+Arguments (strings, both optional): `path` (default: the whole repository), `repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__ownership_report src/billing
+```
+
+It tells the model to call `knowledge_map` and write a report on the owners, the bus factor and
+the files that depend on a single person, ending with concrete recommendations. When `code_age`
+and `file_hotspots` are enabled it also calls them, to flag files last changed by people who have
+left and hotspots owned by one person. Available whenever `knowledge_map` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 
