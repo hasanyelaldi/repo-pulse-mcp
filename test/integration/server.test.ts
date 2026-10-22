@@ -164,6 +164,17 @@ describe('MCP server', () => {
     expect(releasesText).not.toContain('list_tags');
     await releases.close();
 
+    const owners = await connect(['knowledge_map']);
+    expect((await owners.listPrompts()).prompts.map((p) => p.name)).toEqual(['ownership_report']);
+    const ownersText = (
+      (await owners.getPrompt({ name: 'ownership_report', arguments: {} })).messages[0]
+        ?.content as { text: string }
+    ).text;
+    expect(ownersText).toContain('1. knowledge_map for the owners');
+    expect(ownersText).not.toContain('code_age');
+    expect(ownersText).not.toContain('file_hotspots');
+    await owners.close();
+
     const weekly = await connect([
       'recent_activity',
       'contributor_summary',
@@ -218,6 +229,24 @@ describe('MCP server', () => {
     expect(defaultText).toContain('Suggest the next version');
   });
 
+  it('serves the ownership report prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'ownership_report',
+      arguments: { path: 'src', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain(`ownership report for "src" in the "${repoName}" repository`);
+    expect(text).toContain(`1. knowledge_map (path: "src", repo: "${repoName}")`);
+    expect(text).toContain(`2. code_age (path: "src", repo: "${repoName}")`);
+    expect(text).toContain(`3. file_hotspots (path: "src", repo: "${repoName}")`);
+    expect(text).toContain('**Risky and concentrated**');
+
+    const defaults = await client.getPrompt({ name: 'ownership_report', arguments: {} });
+    const defaultText = (defaults.messages[0]?.content as { text: string }).text;
+    expect(defaultText).toContain('the whole repository');
+    expect(defaultText).toContain('1. knowledge_map for the owners');
+  });
+
   it('serves the cleanup branches prompt', async () => {
     const result = await client.getPrompt({
       name: 'cleanup_branches',
@@ -243,6 +272,7 @@ describe('MCP server', () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
       'cleanup_branches',
+      'ownership_report',
       'release_notes',
       'review_branch',
       'weekly_engineering_update',
