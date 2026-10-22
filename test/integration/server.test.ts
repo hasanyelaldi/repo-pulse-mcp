@@ -181,7 +181,8 @@ describe('MCP server', () => {
       'file_hotspots',
       'stale_branches',
     ]);
-    expect((await weekly.listPrompts()).prompts.map((p) => p.name)).toEqual([
+    expect((await weekly.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
+      'cleanup_branches',
       'weekly_engineering_update',
     ]);
     await weekly.close();
@@ -246,9 +247,31 @@ describe('MCP server', () => {
     expect(defaultText).toContain('1. knowledge_map for the owners');
   });
 
+  it('serves the cleanup branches prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'cleanup_branches',
+      arguments: { days: '60', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain('no commits in the last 60 days');
+    expect(text).toContain(`stale_branches (days: 60, repo: "${repoName}")`);
+    expect(text).toContain('git branch -d');
+    expect(text).toContain('do not run the commands yourself');
+
+    const defaults = await client.getPrompt({ name: 'cleanup_branches', arguments: {} });
+    expect((defaults.messages[0]?.content as { text: string }).text).toContain(
+      'stale_branches (days: 30)',
+    );
+
+    await expect(
+      client.getPrompt({ name: 'cleanup_branches', arguments: { days: 'soon' } }),
+    ).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
+      'cleanup_branches',
       'ownership_report',
       'release_notes',
       'review_branch',
