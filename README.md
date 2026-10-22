@@ -86,6 +86,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts                  |
 | Prompt   | `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist |
 | Prompt   | `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           |
+| Prompt   | `cleanup_branches` 🆕       | Stale branches split into safe to delete and needs a decision, with the commands   |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -241,8 +242,9 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 ```
 
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
-tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`, and
-`weekly_engineering_update` needs the four tools it uses.
+tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
+`cleanup_branches` needs `stale_branches`, and `weekly_engineering_update` needs the four tools it
+uses.
 
 ### Claude Code
 
@@ -571,6 +573,19 @@ It tells the model to call `release_notes_draft` and rewrite the grouped commits
 release notes: breaking changes first, then features and fixes, with internal chores left out.
 Without `version`, it also calls `list_tags` (when enabled) and suggests the next semver version.
 Available whenever `release_notes_draft` is enabled.
+
+### Prompt: `cleanup_branches`
+
+Arguments (strings, both optional): `days` (default `30`), `repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__cleanup_branches
+```
+
+It tells the model to call `stale_branches` and split the result into merged branches that are safe
+to delete, with one `git branch -d` command each, and unmerged branches that need a decision, with
+their last author. The model is told not to run the commands itself. Available whenever
+`stale_branches` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 

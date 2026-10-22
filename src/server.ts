@@ -1136,5 +1136,61 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns stale_branches into a slash command that sorts old branches into "safe to delete"
+  // and "needs a decision", so branch cleanup does not start from a raw list.
+  if (enabled('stale_branches')) {
+    server.registerPrompt(
+      'cleanup_branches',
+      {
+        title: 'Clean up branches',
+        description:
+          'Sort branches with no recent commits into ones that are merged and safe to delete and ' +
+          'ones that need a decision, with the git commands to delete the safe ones.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          days: z
+            .string()
+            .regex(/^\d{1,3}$/)
+            .optional()
+            .describe('A branch is stale after this many days without commits (default 30).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ days, repo }) => {
+        const window = days ?? '30';
+        const args = `days: ${window}${repo ? `, repo: "${repo}"` : ''}`;
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Help me clean up branches with no commits in the last ${window} days` +
+                    `${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  `1. stale_branches (${args}) for the stale branches and whether each is merged.`,
+                  '',
+                  'Then write a cleanup plan in Markdown with these sections:',
+                  '- **Safe to delete**: branches already merged into HEAD, with their age and last ' +
+                    'author, followed by one `git branch -d` command per branch in a code block.',
+                  '- **Needs a decision**: unmerged branches, oldest first, with their age and last ' +
+                    'author, so I know whom to ask. Do not suggest deleting them.',
+                  '',
+                  'repo-pulse is read-only: do not run the commands yourself, and do not invent ' +
+                    'branches the tool results do not list. Keep it under 250 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }
