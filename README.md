@@ -88,6 +88,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Prompt   | `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           |
 | Prompt   | `ownership_report` 🆕       | Owners, bus factor and knowledge at risk for a directory, with next steps          |
 | Prompt   | `cleanup_branches` 🆕       | Stale branches split into safe to delete and needs a decision, with the commands   |
+| Prompt   | `explain_file` 🆕           | What to know before changing a file: its history, who to ask, what changes with it |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -244,8 +245,8 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
 tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
-`ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`, and
-`weekly_engineering_update` needs the four tools it uses.
+`ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`,
+`explain_file` needs `file_history`, and `weekly_engineering_update` needs the four tools it uses.
 
 ### Claude Code
 
@@ -600,6 +601,19 @@ It tells the model to call `stale_branches` and split the result into merged bra
 to delete, with one `git branch -d` command each, and unmerged branches that need a decision, with
 their last author. The model is told not to run the commands itself. Available whenever
 `stale_branches` is enabled.
+
+### Prompt: `explain_file`
+
+Arguments (strings): `path` (required, a single file), `repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__explain_file src/billing/invoice.ts
+```
+
+It tells the model to call `file_history` and write a briefing on how the file evolved and what
+recent commits did to it, ending with what to watch out for before changing it. When
+`knowledge_map` and `change_coupling` are enabled it also calls them, to name who to ask and which
+files usually change together with it. Available whenever `file_history` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 

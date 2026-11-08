@@ -1276,5 +1276,91 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns file_history into a slash command for "what should I know before I change this
+  // file?", adding owners and co-changing files when knowledge_map and change_coupling are on.
+  if (enabled('file_history')) {
+    server.registerPrompt(
+      'explain_file',
+      {
+        title: 'Explain a file',
+        description:
+          'Briefing on a single file before you change it: how it evolved, who knows it, and ' +
+          'which files usually change together with it.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          path: z
+            .string()
+            .min(1)
+            .max(500)
+            .describe('Repository-relative path of a single file, as named at HEAD.'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ path, repo }) => {
+        const repoArg = repo ? `, repo: "${repo}"` : '';
+        const steps = [
+          `file_history (path: "${path}"${repoArg}) for how the file evolved and who reworked it.`,
+        ];
+        // knowledge_map and change_coupling are in other toolsets; each adds a section when enabled.
+        if (enabled('knowledge_map')) {
+          steps.push(`knowledge_map (path: "${path}"${repoArg}) for who knows the file best.`);
+        }
+        if (enabled('change_coupling')) {
+          steps.push(
+            `change_coupling (file: "${path}"${repoArg}) for the files that usually change with it.`,
+          );
+        }
+        const sections = [
+          '- **History**: when the file was created, its busiest periods and the biggest ' +
+            'reworks, including renames, in three to five bullets.',
+          '- **Recent changes**: what the last few commits did to it, in plain language.',
+        ];
+        if (enabled('knowledge_map')) {
+          sections.push(
+            '- **Who to ask**: the top one or two people and their share of the knowledge, and ' +
+              'whether the file depends on a single person.',
+          );
+        }
+        if (enabled('change_coupling')) {
+          sections.push(
+            '- **Changes together with**: files that usually change in the same commits, with how ' +
+              'often, so I know what else to check or update.',
+          );
+        }
+        sections.push(
+          '- **Before you change it**: two or three concrete things to watch out for, based on ' +
+            'the above.',
+        );
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Explain the history of "${path}"${repo ? ` in the "${repo}" repository` : ''} ` +
+                    'so I know what to watch out for before I change it.',
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps.map((s, i) => `${i + 1}. ${s}`),
+                  '',
+                  'Then write a briefing in Markdown with these sections:',
+                  ...sections,
+                  '',
+                  'repo-pulse returns history and metadata, not the file contents: do not claim to ' +
+                    'have read the code, and do not invent anything the tool results do not ' +
+                    'support. Keep it under 300 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }

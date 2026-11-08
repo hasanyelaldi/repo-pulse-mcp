@@ -150,8 +150,20 @@ describe('MCP server', () => {
     expect(reviewText).not.toContain('compare_refs');
     await review.close();
 
+    const plain = await connect(['recent_activity', 'commit_search']);
+    expect(plain.getServerCapabilities()?.prompts).toBeUndefined();
+    await plain.close();
+
+    // explain_file only needs file_history; knowledge_map and change_coupling are not enabled.
     const history = await connect(['history']);
-    expect(history.getServerCapabilities()?.prompts).toBeUndefined();
+    expect((await history.listPrompts()).prompts.map((p) => p.name)).toEqual(['explain_file']);
+    const historyText = (
+      (await history.getPrompt({ name: 'explain_file', arguments: { path: 'README.md' } }))
+        .messages[0]?.content as { text: string }
+    ).text;
+    expect(historyText).toContain('1. file_history (path: "README.md")');
+    expect(historyText).not.toContain('knowledge_map');
+    expect(historyText).not.toContain('change_coupling');
     await history.close();
 
     const releases = await connect(['release_notes_draft']);
@@ -268,10 +280,26 @@ describe('MCP server', () => {
     ).rejects.toThrow();
   });
 
+  it('serves the explain file prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'explain_file',
+      arguments: { path: 'src/app.ts', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain(`history of "src/app.ts" in the "${repoName}" repository`);
+    expect(text).toContain(`1. file_history (path: "src/app.ts", repo: "${repoName}")`);
+    expect(text).toContain(`2. knowledge_map (path: "src/app.ts", repo: "${repoName}")`);
+    expect(text).toContain(`3. change_coupling (file: "src/app.ts", repo: "${repoName}")`);
+    expect(text).toContain('**Changes together with**');
+
+    await expect(client.getPrompt({ name: 'explain_file', arguments: {} })).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
       'cleanup_branches',
+      'explain_file',
       'ownership_report',
       'release_notes',
       'review_branch',
