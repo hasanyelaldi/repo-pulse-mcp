@@ -141,7 +141,10 @@ describe('MCP server', () => {
       ['change_coupling', 'file_hotspots', 'list_tags', 'review_context'].sort(),
     );
     // review_branch only needs review_context; compare_refs (releases) is not enabled.
-    expect((await review.listPrompts()).prompts.map((p) => p.name)).toEqual(['review_branch']);
+    expect((await review.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
+      'refactor_candidates',
+      'review_branch',
+    ]);
     const reviewText = (
       (await review.getPrompt({ name: 'review_branch', arguments: { base: 'main' } })).messages[0]
         ?.content as { text: string }
@@ -195,9 +198,24 @@ describe('MCP server', () => {
     ]);
     expect((await weekly.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
       'cleanup_branches',
+      'refactor_candidates',
       'weekly_engineering_update',
     ]);
     await weekly.close();
+
+    // refactor_candidates only needs file_hotspots; the optional tools are not mentioned.
+    const hotspots = await connect(['file_hotspots']);
+    expect((await hotspots.listPrompts()).prompts.map((p) => p.name)).toEqual([
+      'refactor_candidates',
+    ]);
+    const hotspotsText = (
+      (await hotspots.getPrompt({ name: 'refactor_candidates', arguments: {} })).messages[0]
+        ?.content as { text: string }
+    ).text;
+    expect(hotspotsText).toContain('1. file_hotspots (days: 90)');
+    expect(hotspotsText).not.toContain('change_coupling');
+    expect(hotspotsText).not.toContain('knowledge_map');
+    await hotspots.close();
   });
 
   it('serves the review branch prompt', async () => {
@@ -295,12 +313,32 @@ describe('MCP server', () => {
     await expect(client.getPrompt({ name: 'explain_file', arguments: {} })).rejects.toThrow();
   });
 
+  it('serves the refactor candidates prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'refactor_candidates',
+      arguments: { days: '30', path: 'src', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    const args = `days: 30, path: "src", repo: "${repoName}"`;
+    expect(text).toContain(`refactoring candidates in "src" of the "${repoName}" repository`);
+    expect(text).toContain(`1. file_hotspots (${args}) for the files that change most`);
+    expect(text).toContain(`2. file_hotspots (${args}, types: ["fix"])`);
+    expect(text).toContain(`3. change_coupling (${args})`);
+    expect(text).toContain(`4. knowledge_map (path: "<file>", repo: "${repoName}")`);
+    expect(text).toContain('**Leave alone**');
+
+    await expect(
+      client.getPrompt({ name: 'refactor_candidates', arguments: { days: 'later' } }),
+    ).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
       'cleanup_branches',
       'explain_file',
       'ownership_report',
+      'refactor_candidates',
       'release_notes',
       'review_branch',
       'weekly_engineering_update',

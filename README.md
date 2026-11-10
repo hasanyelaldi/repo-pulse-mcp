@@ -89,6 +89,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Prompt   | `ownership_report` 🆕       | Owners, bus factor and knowledge at risk for a directory, with next steps          |
 | Prompt   | `cleanup_branches` 🆕       | Stale branches split into safe to delete and needs a decision, with the commands   |
 | Prompt   | `explain_file` 🆕           | What to know before changing a file: its history, who to ask, what changes with it |
+| Prompt   | `refactor_candidates` 🆕    | Files that change and break most, ranked, with a plan for where to start           |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -246,7 +247,8 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
 tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
 `ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`,
-`explain_file` needs `file_history`, and `weekly_engineering_update` needs the four tools it uses.
+`explain_file` needs `file_history`, `refactor_candidates` needs `file_hotspots`, and
+`weekly_engineering_update` needs the four tools it uses.
 
 ### Claude Code
 
@@ -614,6 +616,21 @@ It tells the model to call `file_history` and write a briefing on how the file e
 recent commits did to it, ending with what to watch out for before changing it. When
 `knowledge_map` and `change_coupling` are enabled it also calls them, to name who to ask and which
 files usually change together with it. Available whenever `file_history` is enabled.
+
+### Prompt: `refactor_candidates`
+
+Arguments (strings, all optional): `days` (default `90`), `path` (default: the whole repository),
+`repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__refactor_candidates
+```
+
+It tells the model to call `file_hotspots` twice, for churn and for bug fixes, and rank up to five
+files that both change and break often, with a short plan for the top ones and a list of files to
+leave alone (changelogs, lockfiles, config). When `change_coupling` and `knowledge_map` are enabled
+it also calls them, to show what each file drags along and who should do the work. Available
+whenever `file_hotspots` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 

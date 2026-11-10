@@ -1362,5 +1362,88 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns file_hotspots into a slash command for "what should we refactor first?", ranking
+  // churn and bug fixes and adding coupling and ownership when those tools are enabled.
+  if (enabled('file_hotspots')) {
+    server.registerPrompt(
+      'refactor_candidates',
+      {
+        title: 'Refactor candidates',
+        description:
+          'Rank the files most worth refactoring from how often they change and break, with ' +
+          'hidden dependencies and owners when available, and a short plan for the top ones.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          days: z
+            .string()
+            .regex(/^\d{1,3}$/)
+            .optional()
+            .describe('Window in days (default 90).'),
+          path: z
+            .string()
+            .max(500)
+            .optional()
+            .describe('File or directory to look at (default: the whole repository).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ days, path, repo }) => {
+        const window = days ?? '90';
+        const args = `days: ${window}${path ? `, path: "${path}"` : ''}${repo ? `, repo: "${repo}"` : ''}`;
+        const steps = [
+          `file_hotspots (${args}) for the files that change most.`,
+          `file_hotspots (${args}, types: ["fix"]) for the files that keep breaking.`,
+        ];
+        // change_coupling and knowledge_map are optional; each adds a column of evidence.
+        if (enabled('change_coupling')) {
+          steps.push(`change_coupling (${args}) for files that are tangled with each other.`);
+        }
+        if (enabled('knowledge_map')) {
+          steps.push(
+            `knowledge_map (path: "<file>"${repo ? `, repo: "${repo}"` : ''}) for each of the ` +
+              'top three candidates, to see who should do the work.',
+          );
+        }
+        const evidence = ['how often it changed', 'how many of those changes were fixes'];
+        if (enabled('change_coupling')) evidence.push('which files it drags along');
+        if (enabled('knowledge_map')) evidence.push('who owns it');
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Find the best refactoring candidates in ${path ? `"${path}"` : 'the repository'}` +
+                    `${repo ? ` of the "${repo}" repository` : ''}, based on the last ${window} days.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps.map((s, i) => `${i + 1}. ${s}`),
+                  '',
+                  'Then write the result in Markdown with these sections:',
+                  `- **Top candidates**: up to five files in a table with ${evidence.join(', ')}. ` +
+                    'Rank files that both change often and break often first.',
+                  '- **Why these**: one line per file on what the numbers suggest (too many ' +
+                    'responsibilities, missing tests, hidden dependencies).',
+                  '- **Where to start**: a short plan for the top one or two, as small steps that ' +
+                    'can each be merged on their own.',
+                  '- **Leave alone**: files that change often for healthy reasons (changelogs, ' +
+                    'lockfiles, config), so nobody refactors them by mistake.',
+                  '',
+                  'repo-pulse returns history and metadata, not the file contents: do not claim to ' +
+                    'have read the code, and do not invent anything the tool results do not ' +
+                    'support. Keep it under 300 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }
