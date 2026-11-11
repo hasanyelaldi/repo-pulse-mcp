@@ -1445,5 +1445,90 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns commit_search into a slash command for "where did ticket X land, and which release
+  // shipped it?", adding the release when list_tags is enabled.
+  if (enabled('commit_search')) {
+    server.registerPrompt(
+      'trace_change',
+      {
+        title: 'Trace a change',
+        description:
+          'Trace a ticket id, feature name or any text through the commit history: when it ' +
+          'landed, who worked on it, how it evolved and which release shipped it.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          query: z
+            .string()
+            .min(1)
+            .max(200)
+            .describe('Text to look for in commit messages, e.g. a ticket id like "ABC-123".'),
+          path: z
+            .string()
+            .max(500)
+            .optional()
+            .describe('Only commits touching this file or directory.'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ query, path, repo }) => {
+        const args = [
+          `query: "${query}"`,
+          path ? `path: "${path}"` : undefined,
+          repo ? `repo: "${repo}"` : undefined,
+        ]
+          .filter(Boolean)
+          .join(', ');
+        const steps = [`commit_search (${args}, limit: 50) for every commit that mentions it.`];
+        // list_tags is in another toolset; it tells which release first shipped the change.
+        if (enabled('list_tags')) {
+          steps.push(
+            `list_tags${repo ? ` (repo: "${repo}")` : ''} to find the first tag after the ` +
+              'earliest matching commit.',
+          );
+        }
+        const sections = [
+          '- **Summary**: what the change is, in one or two sentences, from the commit messages.',
+          '- **Timeline**: the matching commits, oldest first, as date, author and subject, ' +
+            'grouping follow-up fixes and reverts with what they fix or undo.',
+          '- **People**: who worked on it, most commits first.',
+        ];
+        if (enabled('list_tags')) {
+          sections.push(
+            '- **Shipped in**: the first tag dated after the earliest matching commit, and any ' +
+              'later commits that came after it. Say "not released yet" when no tag is newer.',
+          );
+        }
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Trace "${query}" through the commit history${path ? ` of "${path}"` : ''}` +
+                    `${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps.map((s, i) => `${i + 1}. ${s}`),
+                  '',
+                  'Then write the result in Markdown with these sections:',
+                  ...sections,
+                  '',
+                  'If nothing matches, say so and suggest two or three other search terms instead ' +
+                    'of guessing. The search covers commit messages on HEAD only, not other ' +
+                    'branches or the code. Do not invent anything the tool results do not ' +
+                    'support, and keep it under 250 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }

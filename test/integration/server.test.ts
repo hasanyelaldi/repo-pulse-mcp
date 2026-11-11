@@ -153,13 +153,23 @@ describe('MCP server', () => {
     expect(reviewText).not.toContain('compare_refs');
     await review.close();
 
-    const plain = await connect(['recent_activity', 'commit_search']);
+    const plain = await connect(['recent_activity']);
     expect(plain.getServerCapabilities()?.prompts).toBeUndefined();
     await plain.close();
 
     // explain_file only needs file_history; knowledge_map and change_coupling are not enabled.
     const history = await connect(['history']);
-    expect((await history.listPrompts()).prompts.map((p) => p.name)).toEqual(['explain_file']);
+    expect((await history.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
+      'explain_file',
+      'trace_change',
+    ]);
+    const traceText = (
+      (await history.getPrompt({ name: 'trace_change', arguments: { query: 'ABC-1' } })).messages[0]
+        ?.content as { text: string }
+    ).text;
+    expect(traceText).toContain('1. commit_search (query: "ABC-1", limit: 50)');
+    expect(traceText).not.toContain('list_tags');
+    expect(traceText).not.toContain('**Shipped in**');
     const historyText = (
       (await history.getPrompt({ name: 'explain_file', arguments: { path: 'README.md' } }))
         .messages[0]?.content as { text: string }
@@ -332,6 +342,24 @@ describe('MCP server', () => {
     ).rejects.toThrow();
   });
 
+  it('serves the trace change prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'trace_change',
+      arguments: { query: 'search', path: 'src', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain(
+      `Trace "search" through the commit history of "src" in the "${repoName}"`,
+    );
+    expect(text).toContain(
+      `1. commit_search (query: "search", path: "src", repo: "${repoName}", limit: 50)`,
+    );
+    expect(text).toContain(`2. list_tags (repo: "${repoName}")`);
+    expect(text).toContain('**Shipped in**');
+
+    await expect(client.getPrompt({ name: 'trace_change', arguments: {} })).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
@@ -341,6 +369,7 @@ describe('MCP server', () => {
       'refactor_candidates',
       'release_notes',
       'review_branch',
+      'trace_change',
       'weekly_engineering_update',
     ]);
 
