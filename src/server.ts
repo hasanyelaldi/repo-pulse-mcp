@@ -1530,5 +1530,93 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns recent_activity into a slash command for "I was away, what did I miss?", adding new
+  // releases and the busiest files when list_tags and file_hotspots are enabled.
+  if (enabled('recent_activity')) {
+    server.registerPrompt(
+      'catch_up',
+      {
+        title: 'Catch up',
+        description:
+          'Catch up after time away: what changed in the last N days (optionally in one ' +
+          'directory), grouped by theme, with new releases and what deserves a closer look.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          days: z
+            .string()
+            .regex(/^\d{1,3}$/)
+            .optional()
+            .describe('How many days you were away (default 14).'),
+          path: z
+            .string()
+            .max(500)
+            .optional()
+            .describe('Only changes in this file or directory (default: the whole repository).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ days, path, repo }) => {
+        const window = days ?? '14';
+        const args = `days: ${window}${path ? `, path: "${path}"` : ''}${repo ? `, repo: "${repo}"` : ''}`;
+        const steps = [`recent_activity (${args}, limit: 200) for every commit in the window.`];
+        // list_tags and file_hotspots are in other toolsets; each adds a section when enabled.
+        if (enabled('list_tags')) {
+          steps.push(
+            `list_tags${repo ? ` (repo: "${repo}")` : ''} for releases tagged in the window.`,
+          );
+        }
+        if (enabled('file_hotspots')) {
+          steps.push(`file_hotspots (${args}) for the files that changed most.`);
+        }
+        const sections = [
+          '- **TL;DR**: the two or three changes that matter most, in one sentence each.',
+          '- **What changed**: commits grouped by theme (features, fixes, refactors, tooling), ' +
+            'one line per change in plain language. Merge commits that describe the same change.',
+        ];
+        if (enabled('list_tags')) {
+          sections.push(
+            '- **Releases**: tags dated in the window, or "no new releases". Skip older tags.',
+          );
+        }
+        if (enabled('file_hotspots')) {
+          sections.push(
+            '- **Where the work happened**: the busiest files or areas, so I know what to re-read.',
+          );
+        }
+        sections.push(
+          '- **Worth a closer look**: reverts, breaking changes and large reworks, with the ' +
+            'commit hash so I can open them.',
+        );
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `I was away for the last ${window} days. Catch me up on what changed` +
+                    `${path ? ` in "${path}"` : ''}${repo ? ` in the "${repo}" repository` : ''}.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  ...steps.map((s, i) => `${i + 1}. ${s}`),
+                  '',
+                  'Then write the catch-up in Markdown with these sections:',
+                  ...sections,
+                  '',
+                  'If the commit list was truncated, say so. If nothing changed, say that in one ' +
+                    'line. Do not invent anything the tool results do not support, and keep it ' +
+                    'under 300 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }

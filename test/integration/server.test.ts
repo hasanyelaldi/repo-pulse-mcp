@@ -153,13 +153,27 @@ describe('MCP server', () => {
     expect(reviewText).not.toContain('compare_refs');
     await review.close();
 
-    const plain = await connect(['recent_activity']);
+    const plain = await connect(['compare_refs']);
     expect(plain.getServerCapabilities()?.prompts).toBeUndefined();
     await plain.close();
+
+    // catch_up only needs recent_activity; list_tags and file_hotspots are not enabled.
+    const activity = await connect(['recent_activity']);
+    expect((await activity.listPrompts()).prompts.map((p) => p.name)).toEqual(['catch_up']);
+    const activityText = (
+      (await activity.getPrompt({ name: 'catch_up', arguments: {} })).messages[0]?.content as {
+        text: string;
+      }
+    ).text;
+    expect(activityText).toContain('1. recent_activity (days: 14, limit: 200)');
+    expect(activityText).not.toContain('list_tags');
+    expect(activityText).not.toContain('file_hotspots');
+    await activity.close();
 
     // explain_file only needs file_history; knowledge_map and change_coupling are not enabled.
     const history = await connect(['history']);
     expect((await history.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
+      'catch_up',
       'explain_file',
       'trace_change',
     ]);
@@ -207,6 +221,7 @@ describe('MCP server', () => {
       'stale_branches',
     ]);
     expect((await weekly.listPrompts()).prompts.map((p) => p.name).sort()).toEqual([
+      'catch_up',
       'cleanup_branches',
       'refactor_candidates',
       'weekly_engineering_update',
@@ -360,9 +375,28 @@ describe('MCP server', () => {
     await expect(client.getPrompt({ name: 'trace_change', arguments: {} })).rejects.toThrow();
   });
 
+  it('serves the catch up prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'catch_up',
+      arguments: { days: '21', path: 'src', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    const args = `days: 21, path: "src", repo: "${repoName}"`;
+    expect(text).toContain(`away for the last 21 days. Catch me up on what changed in "src"`);
+    expect(text).toContain(`1. recent_activity (${args}, limit: 200)`);
+    expect(text).toContain(`2. list_tags (repo: "${repoName}")`);
+    expect(text).toContain(`3. file_hotspots (${args})`);
+    expect(text).toContain('**Worth a closer look**');
+
+    await expect(
+      client.getPrompt({ name: 'catch_up', arguments: { days: 'ages' } }),
+    ).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
+      'catch_up',
       'cleanup_branches',
       'explain_file',
       'ownership_report',
