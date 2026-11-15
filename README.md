@@ -91,6 +91,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Prompt   | `explain_file` 🆕           | What to know before changing a file: its history, who to ask, what changes with it |
 | Prompt   | `refactor_candidates` 🆕    | Files that change and break most, ranked, with a plan for where to start           |
 | Prompt   | `trace_change` 🆕           | Where a ticket or feature landed: timeline, people and the release that shipped it |
+| Prompt   | `catch_up` 🆕               | What changed while you were away, grouped by theme, with releases and what to read |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -249,7 +250,8 @@ An unknown name stops the server at startup with the list of valid names. Prompt
 tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
 `ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`,
 `explain_file` needs `file_history`, `refactor_candidates` needs `file_hotspots`, `trace_change`
-needs `commit_search`, and `weekly_engineering_update` needs the four tools it uses.
+needs `commit_search`, `catch_up` needs `recent_activity`, and `weekly_engineering_update` needs the
+four tools it uses.
 
 ### Claude Code
 
@@ -646,6 +648,20 @@ It tells the model to call `commit_search` and write a summary, a timeline of th
 is enabled it also says which release first shipped the change, or that it is not released yet.
 If nothing matches, the model suggests other search terms instead of guessing. Available whenever
 `commit_search` is enabled.
+
+### Prompt: `catch_up`
+
+Arguments (strings, all optional): `days` (default `14`), `path` (default: the whole repository),
+`repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__catch_up 21 src/billing
+```
+
+It tells the model to call `recent_activity` and write a short TL;DR, the changes grouped by theme,
+and the reverts, breaking changes and large reworks worth a closer look, with their hashes. When
+`list_tags` and `file_hotspots` are enabled it also lists the releases tagged in the window and the
+busiest files. Available whenever `recent_activity` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 
