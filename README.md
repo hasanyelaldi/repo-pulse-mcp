@@ -92,6 +92,7 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | Prompt   | `refactor_candidates` 🆕    | Files that change and break most, ranked, with a plan for where to start           |
 | Prompt   | `trace_change` 🆕           | Where a ticket or feature landed: timeline, people and the release that shipped it |
 | Prompt   | `catch_up` 🆕               | What changed while you were away, grouped by theme, with releases and what to read |
+| Prompt   | `sync_branch` 🆕            | Is a branch behind its base, what landed there, and whether to rebase or merge     |
 | Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
@@ -250,8 +251,8 @@ An unknown name stops the server at startup with the list of valid names. Prompt
 tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
 `ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`,
 `explain_file` needs `file_history`, `refactor_candidates` needs `file_hotspots`, `trace_change`
-needs `commit_search`, `catch_up` needs `recent_activity`, and `weekly_engineering_update` needs the
-four tools it uses.
+needs `commit_search`, `catch_up` needs `recent_activity`, `sync_branch` needs `compare_refs`, and
+`weekly_engineering_update` needs the four tools it uses.
 
 ### Claude Code
 
@@ -662,6 +663,21 @@ It tells the model to call `recent_activity` and write a short TL;DR, the change
 and the reverts, breaking changes and large reworks worth a closer look, with their hashes. When
 `list_tags` and `file_hotspots` are enabled it also lists the releases tagged in the window and the
 busiest files. Available whenever `recent_activity` is enabled.
+
+### Prompt: `sync_branch`
+
+Arguments (strings): `base` (required, e.g. `main` or `origin/main`), `head` (default `HEAD`),
+`repo`. In Claude Code:
+
+```
+/mcp__repo-pulse__sync_branch origin/main
+```
+
+It tells the model to call `compare_refs` and report whether the branch is ahead, behind or
+diverged, what landed on the base that the branch does not have (flagging likely conflicts), and
+what to do: nothing, a fast-forward, a rebase or a merge, with the commands. repo-pulse reads local
+refs, so the model adds `git fetch` when the base may be out of date, and it is told not to run the
+commands itself. Available whenever `compare_refs` is enabled.
 
 ### Prompt: `weekly_engineering_update`
 

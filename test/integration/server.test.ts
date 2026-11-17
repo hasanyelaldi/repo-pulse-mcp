@@ -153,7 +153,7 @@ describe('MCP server', () => {
     expect(reviewText).not.toContain('compare_refs');
     await review.close();
 
-    const plain = await connect(['compare_refs']);
+    const plain = await connect(['list_tags']);
     expect(plain.getServerCapabilities()?.prompts).toBeUndefined();
     await plain.close();
 
@@ -393,6 +393,28 @@ describe('MCP server', () => {
     ).rejects.toThrow();
   });
 
+  it('serves the sync branch prompt', async () => {
+    const result = await client.getPrompt({
+      name: 'sync_branch',
+      arguments: { base: 'main', head: 'feature/old-experiment', repo: repoName },
+    });
+    const text = (result.messages[0]?.content as { text: string }).text;
+    expect(text).toContain('Check whether feature/old-experiment is in sync with main');
+    expect(text).toContain(
+      `1. compare_refs (base: "main", head: "feature/old-experiment", repo: "${repoName}", limit: 50)`,
+    );
+    expect(text).toContain('**New on main**');
+    expect(text).toContain('git merge --ff-only');
+    expect(text).toContain('do not run the commands yourself');
+
+    const defaults = await client.getPrompt({ name: 'sync_branch', arguments: { base: 'main' } });
+    expect((defaults.messages[0]?.content as { text: string }).text).toContain(
+      '1. compare_refs (base: "main", head: "HEAD", limit: 50)',
+    );
+
+    await expect(client.getPrompt({ name: 'sync_branch', arguments: {} })).rejects.toThrow();
+  });
+
   it('serves the weekly update prompt', async () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
@@ -403,6 +425,7 @@ describe('MCP server', () => {
       'refactor_candidates',
       'release_notes',
       'review_branch',
+      'sync_branch',
       'trace_change',
       'weekly_engineering_update',
     ]);
