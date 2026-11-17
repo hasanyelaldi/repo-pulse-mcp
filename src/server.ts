@@ -1618,5 +1618,70 @@ export function createServer({ registry, runGit, now, tools }: ServerDeps): McpS
     );
   }
 
+  // Turns compare_refs into a slash command for "is my branch behind, and should I rebase or
+  // merge?", with what landed on the base branch and the git commands to sync.
+  if (enabled('compare_refs')) {
+    server.registerPrompt(
+      'sync_branch',
+      {
+        title: 'Sync a branch',
+        description:
+          'Check how far a branch is ahead of and behind its base branch, summarize what landed ' +
+          'on the base since, and recommend whether to fast-forward, rebase or merge.',
+        // Prompt arguments are always strings in MCP.
+        argsSchema: z.object({
+          base: z
+            .string()
+            .min(1)
+            .max(200)
+            .describe('Branch to sync with, e.g. "main" or "origin/main".'),
+          head: z.string().max(200).optional().describe('Branch to check (default HEAD).'),
+          repo: z
+            .string()
+            .optional()
+            .describe('Repository name; defaults to the first configured repo.'),
+        }),
+      },
+      ({ base, head, repo }) => {
+        const branch = head ?? 'HEAD';
+        const args = `base: "${base}", head: "${branch}"${repo ? `, repo: "${repo}"` : ''}`;
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: [
+                  `Check whether ${branch} is in sync with ${base}` +
+                    `${repo ? ` in the "${repo}" repository` : ''}, and tell me what to do.`,
+                  '',
+                  'Gather data with the repo-pulse tools first:',
+                  `1. compare_refs (${args}, limit: 50) for the commits on each side.`,
+                  '',
+                  'Then write the result in Markdown with these sections:',
+                  '- **Status**: identical, ahead, behind or diverged, with both commit counts, in ' +
+                    'one line.',
+                  `- **New on ${base}**: what landed on ${base} that ${branch} does not have, ` +
+                    'grouped by theme, one line per change. Call out anything that looks likely to ' +
+                    'conflict or to change behavior the branch relies on. Skip this if not behind.',
+                  `- **Only on ${branch}**: the branch's own commits in one or two lines.`,
+                  '- **What to do**: nothing if identical or only ahead; a fast-forward ' +
+                    '(`git merge --ff-only`) if only behind; if diverged, a rebase when the branch ' +
+                    'is only yours and a merge when others build on it. Give the commands in a ' +
+                    'code block.',
+                  '',
+                  'repo-pulse reads local refs: if the base may be out of date, put `git fetch` ' +
+                    'first and use the remote branch. It is read-only, so do not run the commands ' +
+                    'yourself, and do not invent anything the tool results do not support. Keep ' +
+                    'it under 250 words.',
+                ].join('\n'),
+              },
+            },
+          ],
+        };
+      },
+    );
+  }
+
   return server;
 }
