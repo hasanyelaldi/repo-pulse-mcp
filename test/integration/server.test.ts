@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -413,6 +414,22 @@ describe('MCP server', () => {
     );
 
     await expect(client.getPrompt({ name: 'sync_branch', arguments: {} })).rejects.toThrow();
+  });
+
+  // The README lists tools and prompts by hand; this catches one added without docs.
+  it('documents every tool and prompt in the README', async () => {
+    const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
+    const { tools } = await client.listTools();
+    expect(readme).toContain(`${tools.length} tools, grouped by the question they answer`);
+    for (const { name } of tools) {
+      expect(readme).toMatch(new RegExp(`^\\| \`${name}\``, 'm'));
+      expect(readme).toContain(`### \`${name}\``);
+    }
+    const { prompts } = await client.listPrompts();
+    for (const { name } of prompts) {
+      expect(readme).toMatch(new RegExp(`^\\| \`${name}\``, 'm'));
+      expect(readme).toContain(`### Prompt: \`${name}\``);
+    }
   });
 
   it('serves the weekly update prompt', async () => {

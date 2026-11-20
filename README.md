@@ -79,21 +79,32 @@ Then ask _"What changed since the last release?"_, or review your branch with th
 | `commit_search`   | Commits whose message mentions a ticket id, feature name or any text |
 | `file_history`    | One file's commits with line stats, following it across renames      |
 
+### 💬 Prompts
+
+Ready-made workflows that show up as slash commands, e.g. `/mcp__repo-pulse__review_branch main` in
+Claude Code. Each one is offered only when the tools it needs are enabled; optional tools add
+sections when they are there too.
+
+| Prompt                      | What it gives you                                                                  | Needs                 |
+| --------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist | `review_context`      |
+| `sync_branch` 🆕            | Is a branch behind its base, what landed there, and whether to rebase or merge     | `compare_refs`        |
+| `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           | `release_notes_draft` |
+| `cleanup_branches` 🆕       | Stale branches split into safe to delete and needs a decision, with the commands   | `stale_branches`      |
+| `ownership_report` 🆕       | Owners, bus factor and knowledge at risk for a directory, with next steps          | `knowledge_map`       |
+| `refactor_candidates` 🆕    | Files that change and break most, ranked, with a plan for where to start           | `file_hotspots`       |
+| `explain_file` 🆕           | What to know before changing a file: its history, who to ask, what changes with it | `file_history`        |
+| `trace_change` 🆕           | Where a ticket or feature landed: timeline, people and the release that shipped it | `commit_search`       |
+| `catch_up` 🆕               | What changed while you were away, grouped by theme, with releases and what to read | `recent_activity`     |
+| `weekly_engineering_update` | A weekly update for stakeholders from recent activity                              | four tools            |
+
+Arguments and details are in the [Prompt reference](#prompt-reference).
+
 ### 📦 Also included
 
-| Kind     | Name                        | What it does                                                                       |
-| -------- | --------------------------- | ---------------------------------------------------------------------------------- |
-| Resource | `repo://{name}/overview`    | Current branch, last commit, latest tag, commit/branch/tag counts                  |
-| Prompt   | `review_branch` 🆕          | Review briefing for a branch: risky files, forgotten files, reviewers, a checklist |
-| Prompt   | `release_notes` 🆕          | Polished release notes since the last tag, with a suggested next version           |
-| Prompt   | `ownership_report` 🆕       | Owners, bus factor and knowledge at risk for a directory, with next steps          |
-| Prompt   | `cleanup_branches` 🆕       | Stale branches split into safe to delete and needs a decision, with the commands   |
-| Prompt   | `explain_file` 🆕           | What to know before changing a file: its history, who to ask, what changes with it |
-| Prompt   | `refactor_candidates` 🆕    | Files that change and break most, ranked, with a plan for where to start           |
-| Prompt   | `trace_change` 🆕           | Where a ticket or feature landed: timeline, people and the release that shipped it |
-| Prompt   | `catch_up` 🆕               | What changed while you were away, grouped by theme, with releases and what to read |
-| Prompt   | `sync_branch` 🆕            | Is a branch behind its base, what landed there, and whether to rebase or merge     |
-| Prompt   | `weekly_engineering_update` | Guides the model to gather data with the tools and write an update                 |
+| Kind     | Name                     | What it does                                                      |
+| -------- | ------------------------ | ----------------------------------------------------------------- |
+| Resource | `repo://{name}/overview` | Current branch, last commit, latest tag, commit/branch/tag counts |
 
 All tools are annotated `readOnlyHint: true`, declare an `outputSchema`, and return both
 `structuredContent` and a JSON text block for older clients. Full inputs and outputs are in the
@@ -248,11 +259,7 @@ REPO_PULSE_TOOLS=review,ownership npx -y repo-pulse-mcp ~/code/my-app
 ```
 
 An unknown name stops the server at startup with the list of valid names. Prompts follow the
-tools: `review_branch` needs `review_context`, `release_notes` needs `release_notes_draft`,
-`ownership_report` needs `knowledge_map`, `cleanup_branches` needs `stale_branches`,
-`explain_file` needs `file_history`, `refactor_candidates` needs `file_hotspots`, `trace_change`
-needs `commit_search`, `catch_up` needs `recent_activity`, `sync_branch` needs `compare_refs`, and
-`weekly_engineering_update` needs the four tools it uses.
+tools: each one is offered only when the tools in its [Needs](#-prompts) column are enabled.
 
 ### Claude Code
 
@@ -552,6 +559,11 @@ One resource per configured repository (listed via `resources/list`, name comple
   "tagCount": 9
 }
 ```
+
+## Prompt reference
+
+Prompt arguments are strings, as MCP requires. In Claude Code, pass them after the command in
+order: `/mcp__repo-pulse__<prompt> <arg1> <arg2>`.
 
 ### Prompt: `review_branch`
 
