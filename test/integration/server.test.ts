@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RepoRegistry, resolveRepositories } from '../../src/config.js';
 import { runGit } from '../../src/git/runner.js';
 import { createServer } from '../../src/server.js';
-import { ALL_TOOLS, selectTools } from '../../src/toolsets.js';
+import { ALL_TOOLS, selectTools, TOOLSETS } from '../../src/toolsets.js';
 import { createFixtureRepo, NOW, type TempRepo } from './fixture.js';
 
 // End-to-end: a real MCP client talks to the server over an in-memory transport.
@@ -24,6 +24,20 @@ beforeAll(async () => {
   client = new Client({ name: 'test-client', version: '0.0.0' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 });
+
+// A second client on a server with only some tools enabled (--tools).
+async function connect(names: string[]): Promise<Client> {
+  const repos = await resolveRepositories([repo.path], runGit);
+  const server = createServer({
+    registry: new RepoRegistry(repos),
+    runGit,
+    tools: selectTools(names),
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const c = new Client({ name: 'test-client', version: '0.0.0' });
+  await Promise.all([server.connect(serverTransport), c.connect(clientTransport)]);
+  return c;
+}
 
 afterAll(async () => {
   await client?.close();
@@ -123,19 +137,6 @@ describe('MCP server', () => {
   });
 
   it('registers only the selected tools, and the prompt only with its tools', async () => {
-    const connect = async (names: string[]) => {
-      const repos = await resolveRepositories([repo.path], runGit);
-      const server = createServer({
-        registry: new RepoRegistry(repos),
-        runGit,
-        tools: selectTools(names),
-      });
-      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-      const c = new Client({ name: 'test-client', version: '0.0.0' });
-      await Promise.all([server.connect(serverTransport), c.connect(clientTransport)]);
-      return c;
-    };
-
     const review = await connect(['review', 'list_tags']);
     const { tools } = await review.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
@@ -242,6 +243,35 @@ describe('MCP server', () => {
     expect(hotspotsText).not.toContain('change_coupling');
     expect(hotspotsText).not.toContain('knowledge_map');
     await hotspots.close();
+  });
+
+  // A prompt that tells the model to call a disabled tool makes it fail or guess. Check every
+  // prompt under every single tool and toolset, with the required arguments filled in.
+  it('never names a disabled tool in a prompt', async () => {
+    const values: Record<string, string> = { base: 'main', path: 'README.md', query: 'demo' };
+    for (const names of [...ALL_TOOLS.map((t) => [t]), ...Object.keys(TOOLSETS).map((t) => [t])]) {
+      const enabledTools = selectTools(names);
+      const c = await connect(names);
+      const prompts = c.getServerCapabilities()?.prompts ? (await c.listPrompts()).prompts : [];
+      for (const prompt of prompts) {
+        const args = Object.fromEntries(
+          (prompt.arguments ?? [])
+            .filter((a) => a.required)
+            .map((a) => [a.name, values[a.name] ?? 'x']),
+        );
+        const result = await c.getPrompt({ name: prompt.name, arguments: args });
+        const text = (result.messages[0]?.content as { text: string }).text;
+        const named = ALL_TOOLS.filter((t) => text.includes(t));
+        expect(named.length, `${prompt.name} with ${names.join(',')}`).toBeGreaterThan(0);
+        for (const tool of named) {
+          expect(
+            enabledTools.has(tool),
+            `${prompt.name} names ${tool} with ${names.join(',')}`,
+          ).toBe(true);
+        }
+      }
+      await c.close();
+    }
   });
 
   it('serves the review branch prompt', async () => {
