@@ -262,11 +262,43 @@ export function parseTags(stdout: string): TagRef[] {
  * Paths without a rename are returned unchanged.
  */
 export function renamedPath(path: string): string {
+  return splitRename(path)?.to ?? path;
+}
+
+/**
+ * Splits a numstat rename path ("old => new", "src/{old => new}.ts") into
+ * its old and new path, or returns null when the path is not a rename.
+ */
+export function splitRename(path: string): { from: string; to: string } | null {
+  const tidy = (p: string) => p.replaceAll('//', '/').replace(/^\//, '');
   const braced = /\{([^{}]*) => ([^{}]*)\}/.exec(path);
   if (braced) {
-    const resolved = path.replace(braced[0], braced[2] ?? '');
-    return resolved.replaceAll('//', '/').replace(/^\//, '');
+    return {
+      from: tidy(path.replace(braced[0], braced[1] ?? '')),
+      to: tidy(path.replace(braced[0], braced[2] ?? '')),
+    };
   }
   const arrow = path.indexOf(' => ');
-  return arrow === -1 ? path : path.slice(arrow + ' => '.length);
+  if (arrow === -1) return null;
+  return { from: path.slice(0, arrow), to: path.slice(arrow + ' => '.length) };
+}
+
+/**
+ * Rewrites every file in newest-first commits (from `--numstat --find-renames`)
+ * to its latest name, so changes made before a rename count for the renamed
+ * file. A rename is always seen before the older commits that used the old
+ * name, and chains of renames resolve to the newest name.
+ */
+export function followRenames<T extends CommitWithFiles>(commits: T[]): T[] {
+  const latest = new Map<string, string>();
+  return commits.map((commit) => ({
+    ...commit,
+    files: commit.files.map((file) => {
+      const rename = splitRename(file.path);
+      if (rename === null) return { ...file, path: latest.get(file.path) ?? file.path };
+      const to = latest.get(rename.to) ?? rename.to;
+      latest.set(rename.from, to);
+      return { ...file, path: to };
+    }),
+  }));
 }

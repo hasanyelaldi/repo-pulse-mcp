@@ -9,6 +9,9 @@ import {
   parseCommitsWithNumstat,
   parseTags,
   renamedPath,
+  splitRename,
+  followRenames,
+  type CommitWithFiles,
 } from '../../src/git/parsers.js';
 
 const HASH_A = 'a'.repeat(40);
@@ -168,5 +171,62 @@ describe('renamedPath', () => {
     ['src/{nested => }/util.ts', 'src/util.ts'],
   ])('%j -> %j', (input, expected) => {
     expect(renamedPath(input)).toBe(expected);
+  });
+});
+
+describe('splitRename', () => {
+  it.each([
+    ['old.ts => new.ts', { from: 'old.ts', to: 'new.ts' }],
+    ['src/{old.ts => new.ts}', { from: 'src/old.ts', to: 'src/new.ts' }],
+    ['{src => lib}/util.ts', { from: 'src/util.ts', to: 'lib/util.ts' }],
+    ['src/{ => nested}/util.ts', { from: 'src/util.ts', to: 'src/nested/util.ts' }],
+  ])('%j', (input, expected) => {
+    expect(splitRename(input)).toEqual(expected);
+  });
+
+  it('returns null for a plain path', () => {
+    expect(splitRename('src/app.ts')).toBeNull();
+  });
+});
+
+describe('followRenames', () => {
+  const commit = (shortHash: string, ...paths: string[]): CommitWithFiles => ({
+    hash: shortHash.padEnd(40, '0'),
+    shortHash,
+    author: 'Alice Example',
+    date: '2026-01-10T10:00:00Z',
+    subject: shortHash,
+    files: paths.map((path) => ({ path, additions: 1, deletions: 0 })),
+  });
+  const paths = (commits: CommitWithFiles[]) => commits.map((c) => c.files.map((f) => f.path));
+
+  it('moves older changes to the latest name, through chains of renames', () => {
+    // Newest first: c.ts was b.ts, which was a.ts.
+    const commits = [
+      commit('5', 'c.ts', 'other.ts'),
+      commit('4', 'b.ts => c.ts'),
+      commit('3', 'b.ts', 'other.ts'),
+      commit('2', 'src/{a.ts => b.ts}'),
+      commit('1', 'src/a.ts'),
+    ];
+    // The braced rename puts b.ts under src/, so the chain stops there.
+    expect(paths(followRenames(commits))).toEqual([
+      ['c.ts', 'other.ts'],
+      ['c.ts'],
+      ['c.ts', 'other.ts'],
+      ['src/b.ts'],
+      ['src/b.ts'],
+    ]);
+  });
+
+  it('keeps a new file that reuses an old name apart from the renamed one', () => {
+    const commits = [commit('3', 'a.ts'), commit('2', 'a.ts => b.ts'), commit('1', 'a.ts')];
+    expect(paths(followRenames(commits))).toEqual([['a.ts'], ['b.ts'], ['b.ts']]);
+  });
+
+  it('does not change the input', () => {
+    const commits = [commit('2', 'a.ts => b.ts'), commit('1', 'a.ts')];
+    followRenames(commits);
+    expect(paths(commits)).toEqual([['a.ts => b.ts'], ['a.ts']]);
   });
 });
