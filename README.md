@@ -362,8 +362,9 @@ toward `changes` and `fixes`, but not toward ownership or coupling. Renames are 
 
 Output: `{ repo, windowDays, types, commitsScanned, scanTruncated, commitsMatched, fixesFromKeywords, filesChanged, hotspots: [{ path, changes, fixes, additions, deletions, authors, lastChanged }] }`
 
-Merge commits are excluded and renames are not followed, so a renamed file starts fresh. Use
-`file_history` to trace a single file across renames.
+Merge commits are excluded. Renames are followed: changes made before a rename count for the file
+under its current name. With `path`, only renames inside that path are seen; `file_history` traces
+a single file across any rename.
 
 `fixes` counts the commits among `changes` that were bug fixes: a file that changes often and
 mostly through fixes is a better refactoring candidate than one that just grows. With
@@ -391,8 +392,8 @@ Output: `{ repo, windowDays, commitsScanned, scanTruncated, commitsSkipped, pair
 touched each file: 100 means the two files always change together. A high degree between files
 that do not import each other usually points to a hidden dependency (duplicated logic, a config
 or fixture that must be kept in sync). Large commits such as bulk renames or formatting runs are
-skipped because they would couple every file they touch. Merge commits are excluded and renames
-are not followed.
+skipped because they would couple every file they touch. Merge commits are excluded, and files
+are reported under their current name across renames, as in `file_hotspots`.
 
 ### `knowledge_map`
 
@@ -413,7 +414,8 @@ years ago. Line counts are ignored so generated or reformatted diffs do not domi
 `ownerShare` are percentages. `busFactor` is the fewest authors who together hold more than half
 of the knowledge in the area; `concentratedFiles` counts files where one author holds at least
 80%. `files` lists the most frequently changed files first with their main owner, which makes it
-a quick reviewer suggestion for a path. Merge commits are excluded and renames are not followed.
+a quick reviewer suggestion for a path. Merge commits are excluded, and knowledge from before a
+rename counts for the file under its current name, as in `file_hotspots`.
 
 ### `code_age`
 
@@ -797,8 +799,9 @@ npx @modelcontextprotocol/inspector --cli node build/index.js -e REPO_PULSE_REPO
 
 - Activity, hotspot and contributor tools look at commits reachable from `HEAD`; work on unmerged
   branches is not counted.
-- Renames are not followed in `file_hotspots`, `change_coupling`, `knowledge_map`,
-  `review_context` and `code_age`: a renamed file counts as new from the rename on.
+- Renames are not followed in `review_context` and `code_age`: a renamed file counts as new from
+  the rename on. `file_hotspots`, `change_coupling` and `knowledge_map` follow renames inside the
+  scanned `path`, but not into it from outside.
 - Each session pays about 4k tokens for the tool definitions, so on simple one-off questions a
   shell can be cheaper (see [Benchmark](#benchmark)). [Choosing tools](#choosing-tools) cuts this
   to the groups you use.

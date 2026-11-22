@@ -4,6 +4,7 @@ import {
   COMMIT_FORMAT,
   COMMIT_WITH_BODY_FORMAT,
   COMMIT_WITH_EMAIL_FORMAT,
+  followRenames,
   parseBranches,
   parseCommits,
   parseCommitsWithBody,
@@ -260,7 +261,7 @@ export class RepoInsights {
       'log',
       `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
       '--numstat',
-      '--no-renames',
+      '--find-renames',
       '--no-merges',
       '--no-ext-diff',
       '--no-textconv',
@@ -269,7 +270,7 @@ export class RepoInsights {
       'HEAD',
       ...pathspec(opts.path),
     ]);
-    const commits = parseCommitsWithNumstat(out);
+    const commits = followRenames(parseCommitsWithNumstat(out));
     const nameOf = authorNames(commits);
 
     const stats = new Map<
@@ -362,7 +363,7 @@ export class RepoInsights {
       'log',
       `--format=${COMMIT_FORMAT}`,
       '--numstat',
-      '--no-renames',
+      '--find-renames',
       '--no-merges',
       '--no-ext-diff',
       '--no-textconv',
@@ -371,7 +372,7 @@ export class RepoInsights {
       'HEAD',
       ...pathspec(opts.path),
     ]);
-    const commits = parseCommitsWithNumstat(out);
+    const commits = followRenames(parseCommitsWithNumstat(out));
 
     const revisions = new Map<string, number>();
     const shared = new Map<string, number>();
@@ -641,7 +642,7 @@ export class RepoInsights {
       'log',
       `--format=${COMMIT_WITH_EMAIL_FORMAT}`,
       '--numstat',
-      '--no-renames',
+      '--find-renames',
       '--no-merges',
       '--no-ext-diff',
       '--no-textconv',
@@ -650,7 +651,7 @@ export class RepoInsights {
       'HEAD',
       ...(path === null ? [] : ['--', path]),
     ]);
-    const commits = parseCommitsWithNumstat(out);
+    const commits = followRenames(parseCommitsWithNumstat(out));
     const nameOf = authorNames(commits);
 
     const files = new Map<

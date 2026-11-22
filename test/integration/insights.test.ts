@@ -381,6 +381,39 @@ describe('fileHistory', () => {
   });
 });
 
+describe('renames', () => {
+  let renameRepo: TempRepo;
+
+  beforeAll(async () => {
+    renameRepo = await createRenameRepo();
+  });
+
+  afterAll(async () => {
+    await renameRepo?.cleanup();
+  });
+
+  // src/util.ts was renamed to lib/helpers.ts; its earlier changes count for the new name.
+  it('counts changes before a rename in file_hotspots', async () => {
+    const result = await insights.fileHotspots(renameRepo.path, { days: 30, limit: 10 });
+    expect(result.hotspots.map((h) => h.path)).toEqual(['lib/helpers.ts', 'NOTES.md']);
+    expect(result.hotspots[0]).toMatchObject({ changes: 4, fixes: 1, authors: 3 });
+  });
+
+  it('counts knowledge from before a rename in knowledge_map', async () => {
+    const result = await insights.knowledgeMap(renameRepo.path, {
+      days: 30,
+      halfLifeDays: 90,
+      limit: 10,
+      maxFilesPerCommit: 30,
+    });
+    expect(result.files.find((f) => f.path === 'lib/helpers.ts')).toMatchObject({
+      authors: 3,
+      commits: 4,
+    });
+    expect(result.files.map((f) => f.path)).not.toContain('src/util.ts');
+  });
+});
+
 describe('listTags', () => {
   it('lists tags with the latest tag on HEAD and unreleased commits', async () => {
     const result = await insights.listTags(repo.path, { limit: 20 });
